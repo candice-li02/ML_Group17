@@ -108,7 +108,6 @@ text(bp, table(bank$y), paste0(round(prop*100, 1), "%"), pos = 3)#to add the pro
 
 ```
 
-
 ```{r}
 #| echo: false
 #| warning: false
@@ -130,7 +129,6 @@ bank_num <- bank[,c("age",
 
 ```
 
-
 ```{r}
 #| echo: false
 #| warning: false
@@ -148,7 +146,6 @@ corrplot(cor(bank_num),
          tl.col = "black")
 
 ```
-
 
 ```{r}
 #| echo: false
@@ -302,7 +299,7 @@ grid.arrange(p1, p2, p3, p4, ncol = 2,
 
 ```
 
-@fig-scat3 This set of graphs respectively shows the relationships between several key categorical variables and the variable indicating whether the client subscribes (y). From the graphs, it can be seen that the previous marketing outcome (poutcome) obviously affects whether the client subscribes this time. Clients who were successfully marketed before (success) have a higher probability of subscribing than those who were marketing failed (failure) or had no previous contact (nonexistent). Moreover, there are certain differences between different occupations (job) and educational levels (education), indicating that the social characteristics of the clients may have an impact on the subscription decision. At the same time, there are also certain differences in contact methods (contact), with clients contacted via mobile phone (cellular) having a slightly higher chance of subscribing than those contacted via telephone (telephone). 
+@fig-scat3 This set of graphs respectively shows the relationships between several key categorical variables and the variable indicating whether the client subscribes (y). From the graphs, it can be seen that the previous marketing outcome (poutcome) obviously affects whether the client subscribes this time. Clients who were successfully marketed before (success) have a higher probability of subscribing than those who were marketing failed (failure) or had no previous contact (nonexistent). Moreover, there are certain differences between different occupations (job) and educational levels (education), indicating that the social characteristics of the clients may have an impact on the subscription decision. At the same time, there are also certain differences in contact methods (contact), with clients contacted via mobile phone (cellular) having a slightly higher chance of subscribing than those contacted via telephone (telephone).
 
 Overall, historical marketing results, client social characteristics, and communication channels may all have an impact on whether the client subscribes this time. Therefore, these variables will have certain predictive value in the subsequent modeling process.
 
@@ -410,9 +407,363 @@ Divide the dataset into a training set and a test set in a ratio of 8:2.
 
 # Formal Analysis {#sec-FA}
 
-##Decision Tree
-###Model Description and Justification
-A decision tree classifier was applied as the first tree-based method. Decision trees recursively partition the feature space by selecting the variable and split point that best separates the classes at each node, measured by the Gini impurity criterion.  The resulting model is fully interpretable, as its predictions can be explained through a sequence of human-readable if-then rules. This is especially useful in a banking context, where understanding why a client is predicted to subscribe is of clear practical importance.
+## Linear Discriminant Analysis(LDA)
+
+**Checking Whether the Data Are Suitable for LDA**
+
+Before constructing a Linear Discriminant Analysis (LDA) model, the variables to be included in the model must first be further screened. This step takes into account both business logic and statistical methods. First, during the previous data preprocessing, the variable "duration" was removed because it can only be obtained after a call ends; using it to predict whether a customer will subscribe to a fixed-term deposit would result in a significant data leakage issue. Then, considering the method's inherent conditions, LDA is better suited for continuous numerical variables, as its theoretical foundation assumes that within each class, the feature vectors approximately follow a multivariate normal distribution. Therefore, in this section, the LDA model uses only the continuous numerical variables retained after exploratory analysis for modeling, including "age" , "campaign" , "previous" , "cons.price.idx" , "cons.conf.idx" , and "euribor3m" .
+
+```{r}
+#| label: lda-data-prep
+#| echo: false
+#| warning: false
+#| message: false
+
+library(MASS)
+library(dplyr)
+library(ggplot2)
+library(gt)
+library(ROCR)
+
+# select continuous numerical predictors for LDA
+lda_vars <- c("age", "campaign", "previous",
+              "cons.price.idx", "cons.conf.idx", "euribor3m", "y")
+
+train_lda <- train_data[, lda_vars]
+test_lda  <- test_data[, lda_vars]
+
+# ensure response is a factor
+train_lda$y <- as.factor(train_lda$y)
+test_lda$y  <- as.factor(test_lda$y)
+
+# check class levels
+levels(train_lda$y)
+levels(test_lda$y)
+```
+
+A key assumption of LDA is that the covariance structures of the predictor variables across different categories are roughly the same. To preliminarily assess whether this assumption holds, this study first compared the variances of the two groups of customers ("y = no" and "y = yes") in the training set across various continuous variables, and then examined the covariance matrices of the two groups. The objective here is not to require the two groups to be identical, but rather to determine whether the isovariance assumption of LDA is severely viola.
+
+```{r}
+#| label: tbl-lda-var
+#| tbl-cap: "Variance of Numerical Predictors by Class in the Training Set"
+#| echo: false
+#| warning: false
+#| message: false
+
+num_vars <- c("age", "campaign", "previous",
+              "cons.price.idx", "cons.conf.idx", "euribor3m")
+
+var_summary <- data.frame(
+  Variable = num_vars,
+  Var_no = sapply(train_lda[train_lda$y == "no", num_vars], var),
+  Var_yes = sapply(train_lda[train_lda$y == "yes", num_vars], var)
+)
+
+var_summary %>%
+  gt() %>%
+  fmt_number(columns = c(Var_no, Var_yes), decimals = 3) %>%
+  tab_header(
+    title = "Variance Comparison by Class",
+    subtitle = "Training data only"
+  )
+```
+
+Based on the results of the variance comparison\@tbl-lda-var, it can be observed that the degree of variation across multiple variables is not entirely consistent between the two customer groups. For example, the variance of "age" is 99.73 in the "no" group, whereas it reaches 200.28 in the "yes" group, indicating that subscribing customers are more widely distributed across age groups; the variances of "cons.conf.idx" are 19.71 and 37.51, respectively, while the variance of "previous" increases from 0.17 to 0.85. This suggests that the minority group exhibits greater variability across several continuous variables, indicating that the assumption of homoscedasticity in LDA does not strictly hold.
+
+And then, we will calculate the covariance matrices for the "y = no" and "y = yes" groups, respectively, to further examine whether their overall structures are similar.
+
+```{r}
+#| label: lda-cov-check
+#| echo: false
+#| warning: false
+#| message: false
+
+cov_no  <- cov(train_lda[train_lda$y == "no", num_vars])
+cov_yes <- cov(train_lda[train_lda$y == "yes", num_vars])
+
+round(cov_no, 3)
+round(cov_yes, 3)
+```
+
+**Fitting the LDA Model**
+
+A further comparison of the covariance matrices for the two groups reveals that the assumption of homoscedasticity required by LDA is not strictly satisfied. In particular, for variable pairs such as "age" and "euribor3m" , "age" and "previous" , and "cons.conf.idx" and "euribor3m" , there are differences in both the direction and magnitude of the covariances between the two sample groups. For example, the covariance between "age" and "euribor3m" is 0.516 in the “no” class, but -2.643 in the “yes” class; the covariance between "age" and "previous" is -0.029 in the ‘no’ class, but 0.949 in the “yes” class. This indicates that the joint distribution structures of the two customer groups are not entirely consistent. Therefore, from a strict statistical perspective, LDA can only be considered approximately applicable to this dataset rather than fully satisfying the theoretical assumptions.
+
+To improve comparability across predictors with different measurement scales, the numerical variables were standardized using only the mean and standard deviation of the training set. The same transformation was then applied to the test set.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+train_lda_scaled <- train_lda
+test_lda_scaled  <- test_lda
+
+train_means <- sapply(train_lda_scaled[, num_vars], mean)
+train_sds   <- sapply(train_lda_scaled[, num_vars], sd)
+
+train_lda_scaled[, num_vars] <- scale(train_lda_scaled[, num_vars],
+                                      center = train_means,
+                                      scale = train_sds)
+
+test_lda_scaled[, num_vars] <- scale(test_lda_scaled[, num_vars],
+                                     center = train_means,
+                                     scale = train_sds)
+```
+
+After filtering and standardizing the variables, fit an LDA model using the training set. Once the model has been fitted, extract the coefficients of the linear discriminant function (LD1) to identify which continuous variables contribute most significantly to class differentiation. Since the variables have already been standardized at this point, the magnitude of the coefficients across different variables is more comparable.
+
+```{r}
+#| label: tbl-lda-coefs
+#| tbl-cap: "Linear Discriminant Coefficients (LD1)"
+#| echo: false
+#| warning: false
+#| message: false
+
+lda_model <- lda(y ~ ., data = train_lda_scaled)
+
+ld1_coefs <- data.frame(
+  Variable = rownames(lda_model$scaling),
+  LD1_Coefficient = lda_model$scaling[, 1]
+)
+
+ld1_coefs %>%
+  arrange(desc(abs(LD1_Coefficient))) %>%
+  gt() %>%
+  fmt_number(columns = LD1_Coefficient, decimals = 4) %>%
+  tab_header(
+    title = "Linear Discriminant Coefficients",
+    subtitle = "Variables ranked by absolute coefficient size"
+  )
+```
+
+Based on the results of the discriminant coefficients\@tbl-lda-coefs, the variable with the largest absolute value is "euribor3m" (-1.1968), followed by "cons.price.idx" (0.4932) and "cons.conf.idx" (0.4518), and then "previous" (0.2894). In contrast, the absolute values of the coefficients for "campaign" (-0.0574) and "age" (0.0526) are significantly smaller. This indicates that, in the current LDA model, macroeconomic indicators contribute most significantly to class discrimination, while whether a customer has been contacted in the past and their contact history also play a certain discriminatory role. It is important to note that these coefficients can only be used to measure the relative contribution of variables to the discriminant function and cannot be directly interpreted as causal effects. If there is still a certain degree of correlation among the macroeconomic variables, then some of the coefficient values may reflect shared information rather than the independent effect of a single variable.
+
+**Evaluating the LDA Model**
+
+Then, the trained LDA model is applied to the test set to make predictions. Because the target variable "y" suffers from significant class imbalance, evaluating the model based solely on overall accuracy can be misleading. Therefore, in this section, in addition to presenting the confusion matrix, we will also calculate sensitivity, specificity, and balanced accuracy to provide a more comprehensive assessment of the model’s performance.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+lda_pred <- predict(lda_model, newdata = test_lda_scaled)
+lda_class <- lda_pred$class
+
+tab_lda <- table(Actual = test_lda_scaled$y, Predicted = lda_class)
+tab_lda
+```
+
+```{r}
+#| label: tbl-lda-cm
+#| tbl-cap: "Confusion Matrix for the LDA Model on the Test Set"
+#| echo: false
+#| warning: false
+#| message: false
+
+cm_df <- as.data.frame.matrix(tab_lda)
+cm_df$Actual <- rownames(cm_df)
+cm_df <- cm_df[, c("Actual", colnames(cm_df)[1:2])]
+
+cm_df %>%
+  gt() %>%
+  cols_label(
+    Actual = "Actual Class",
+    no = "Predicted: no",
+    yes = "Predicted: yes"
+  ) %>%
+  tab_header(
+    title = "Confusion Matrix",
+    subtitle = "LDA model on the test set"
+  )
+```
+
+The confusion matrix results\@tbl-lda-cm for the test set show that, among customers who were actually "no", 1699 were correctly predicted as "no", while 73 were misclassified as "yes"; Among customers who were actually "yes", 72 were correctly predicted as "yes", but 156 were misclassified as "no". This indicates that the model clearly tends to classify samples into the majority class "no", while its ability to identify the minority class "yes" is relatively weak.
+
+To evaluate the model's performance more clearly, we will now calculate the overall accuracy, sensitivity, and specificity. Sensitivity measures the model's ability to identify potential subscribers (the "yes" class), while specificity measures its ability to identify non-subscribers (the "no" class). In this class-imbalanced dataset, these two metrics provide more meaningful insights than accuracy alone.
+
+```{r}
+#| label: tbl-lda-metrics
+#| tbl-cap: "Performance Metrics for LDA Model"
+#| echo: false
+#| warning: false
+#| message: false
+
+accuracy_lda <- sum(diag(tab_lda)) / sum(tab_lda)
+sensitivity_lda <- tab_lda["yes", "yes"] / sum(tab_lda["yes", ])
+specificity_lda <- tab_lda["no", "no"] / sum(tab_lda["no", ])
+
+lda_metrics <- data.frame(
+  Accuracy = accuracy_lda,
+  Sensitivity = sensitivity_lda,
+  Specificity = specificity_lda
+)
+
+lda_metrics %>%
+  gt() %>%
+  fmt_number(columns = everything(), decimals = 3) %>%
+  tab_header(
+    title = "Test Set Performance of LDA Model",
+    subtitle = "Including Accuracy, Sensitivity, and Specificity"
+  )
+```
+
+Further calculations of the test set performance metrics\@tbl-lda-metrics, as shown in the table, reveal that the LDA model's overall accuracy is 0.885, which appears relatively high; however, this result is primarily influenced by class imbalance. The model's specificity for the "no" class reached 0.959, indicating a strong ability to identify non-subscribers; in contrast, its sensitivity for the "yes" class was only 0.316, suggesting that the model could identify only about 31.6% of potential subscribers. Overall, while the LDA model exhibits a high overall accuracy, its performance in identifying customers in the minority class is suboptimal.
+
+Given the low proportion of "yes" responses in the data for this study, class-specific performance metrics are more important than overall accuracy. From a practical banking marketing perspective, even if a model has high overall accuracy, its practical value remains limited if it cannot effectively identify potential subscribers. In this regard, the LDA model is better suited as a baseline classification model rather than as the final optimal model.
+
+To further evaluate the model in terms of its "ranking ability" rather than a single threshold, this study also plotted ROC curves and calculated the corresponding AUC values. Here, we used the model's posterior probability for the "yes" class to measure the model's overall ability to distinguish between potential subscribers and non-subscribers.
+
+```{r}
+#| label: fig-lda-roc
+#| fig-cap: "ROC Curve of LDA Model on Test Set"
+#| echo: false
+#| warning: false
+#| message: false
+
+lda_posterior_yes <- lda_pred$posterior[, "yes"]
+
+pred_lda_rocr <- prediction(lda_posterior_yes, test_lda_scaled$y)
+perf_lda <- performance(pred_lda_rocr, "tpr", "fpr")
+auc_lda <- performance(pred_lda_rocr, "auc")@y.values[[1]]
+
+plot(perf_lda, lwd = 2,
+     main = "ROC Curve for LDA")
+abline(a = 0, b = 1, lty = 2, col = "red")
+text(x = 0.6, y = 0.2,
+     labels = paste("AUC =", round(auc_lda, 4)),
+     cex = 1.1)
+```
+
+ROC curves and AUC values provide model evaluation results that are relatively independent of specific classification thresholds. The results\@fig-lda-roc show that the LDA model has an AUC of 0.7136, indicating that the model possesses a certain degree of discriminatory power regarding whether customers will subscribe and is generally capable of ranking customers by probability. However, this level still only indicates that the model has moderate discriminatory power, which is insufficient to compensate for the low sensitivity under the default classification rules. In other words, while the LDA model is not entirely ineffective in overall ranking, it remains weak in identifying the truly important "yes" class under the current default classification rules.
+
+## Quadratic Discriminant Analysis(QDA)
+
+Checking the Suitability of the Data for QDA In the previous section on LDA, we examined the variance and covariance structures of continuous variables across the two customer categories. The results indicate that there are significant differences in variance between the "y = no" and "y = yes" groups across multiple variables, and that the direction and magnitude of covariance between pairs of variables are not consistent. This suggests that the assumption underlying LDA—that “different categories share the same covariance matrix”—is not strictly satisfied.
+
+Under these circumstances, it is reasonable to proceed with a QDA model. Unlike LDA, Quadratic Discriminant Analysis (QDA) allows different categories to have distinct covariance matrices; therefore, when the distribution structures of categories differ, QDA often provides a more flexible classification boundary. To ensure consistency in the comparison with LDA, this section continues to use the same set of continuous variables as in the previous section, "age", "campaign", "previous", "cons.price.idx", "cons.conf.idx", and "euribor3m" .And we continues to use the standardized training and testing set data.
+
+**Fitting the QDA Model**
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Fit QDA model
+qda_model <- qda(y ~ ., data = train_lda_scaled)
+
+# View model results
+qda_model
+```
+
+The model output shows that the prior probabilities for the "no" and "yes" classes in the training set are 0.8884 and 0.1116, respectively, which is consistent with the class imbalance observed in the previous exploratory analysis. In other words, non-subscribing customers constitute the overwhelming majority of the sample, while subscribing customers account for only a small proportion. A closer look at the mean values for each group reveals that the standardized mean of "previous" in the "yes" class is significantly higher than in the "no" class, while the mean of "euribor3m" in the "yes" class is significantly lower. This indicates that historical contact records and economic variables still carry substantial information when distinguishing between the two customer classes, which is largely consistent with the coefficient results from the previous LDA analysis.
+
+**Evaluating the QDA Model**
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Make predictions using QDA model
+qda_pred <- predict(qda_model, newdata = test_lda_scaled)
+# Extract predicted class labels
+qda_class <- qda_pred$class
+
+# Create confusion matrix
+tab_qda <- table(Actual = test_lda_scaled$y, Predicted = qda_class)
+# Display confusion matrix
+tab_qda
+```
+
+```{r}
+#| label: tbl-qda-cm
+#| tbl-cap: "QDA Model Confusion Matrix on Test Set"
+#| echo: false
+#| warning: false
+#| message: false
+
+cm_qda_df <- as.data.frame.matrix(tab_qda)
+cm_qda_df$Actual <- rownames(cm_qda_df)
+cm_qda_df <- cm_qda_df[, c("Actual", colnames(cm_qda_df)[1:2])]
+
+cm_qda_df %>%
+  gt() %>%
+  cols_label(
+    Actual = "Actual Class",
+    no = "Predicted: no",
+    yes = "Predicted: yes"
+  ) %>%
+  tab_header(
+    title = "Confusion Matrix",
+    subtitle = "QDA Model Prediction Results on Test Set"
+  )
+```
+
+The confusion matrix results\@tbl-qda-cm for the test set show that, among customers who were actually "no", 1658 were correctly predicted as "no" and 114 were misclassified as "yes"; among customers who were actually "yes", 93 were correctly predicted as "yes" and 135 were misclassified as "no". Compared to the previous LDA, QDA identified more "yes" customers but also misclassified more "no" customers as "yes". This indicates that QDA is relatively more aggressive in classification and no longer exhibits the pronounced bias toward the majority "no" class seen in LDA.
+
+To evaluate the model's performance more comprehensively, we further calculate accuracy, sensitivity, and specificity. Sensitivity measures the model’s ability to identify potential subscribers (the "yes" class), while specificity measures its ability to identify non-subscribers (the "no" class). In the current dataset, which suffers from class imbalance, these two metrics provide more meaningful insights than accuracy alone.
+
+```{r}
+#| label: tbl-qda-metrics
+#| tbl-cap: "QDA Model Performance Metrics"
+#| echo: false
+#| warning: false
+#| message: false
+
+accuracy_qda <- sum(diag(tab_qda)) / sum(tab_qda)
+sensitivity_qda <- tab_qda["yes", "yes"] / sum(tab_qda["yes", ])
+specificity_qda <- tab_qda["no", "no"] / sum(tab_qda["no", ])
+
+qda_metrics <- data.frame(
+  Accuracy = accuracy_qda,
+  Sensitivity = sensitivity_qda,
+  Specificity = specificity_qda
+)
+
+qda_metrics %>%
+  gt() %>%
+  fmt_number(columns = everything(), decimals = 3) %>%
+  tab_header(
+    title = "QDA Model Test Set Performance",
+    subtitle = "Including Accuracy, Sensitivity and Specificity"
+  )
+```
+
+Based on the test set results@tbl-qda-metrics, the QDA model achieved an overall accuracy of 0.875, which is slightly lower than that of the previous LDA model (0.885); however, its sensitivity for identifying the “yes” class improved to 0.41, higher than the LDA's 0.316, indicating that QDA is capable of identifying more potential subscribers. At the same time, the QDA model’s specificity is 0.936, slightly lower than the LDA's 0.958, indicating that while it improves the ability to identify the "yes" class, it also sacrifices some accuracy in identifying the "no" class.
+
+This result reflects the difference in classification tendencies between LDA and QDA. LDA tends to favor the majority class, resulting in higher overall accuracy and specificity but lower sensitivity; QDA, on the other hand, demonstrates stronger performance in identifying the minority class in the current dataset. Although overall accuracy decreases slightly, this change is practically meaningful from a marketing perspective. In banking marketing scenarios, missing potential subscribers is typically a greater concern than making a few extra calls to unqualified leads; therefore, the improvement in sensitivity holds significant business value.
+
+To further evaluate the model in terms of its overall discriminatory power, we plotted the ROC curve for QDA and calculated the AUC value. Here, we used the model's posterior probability for the "yes" class to measure the model's overall ability to distinguish between potential subscribers and non-subscribers.
+
+```{r}
+#| label: fig-qda-roc
+#| fig-cap: "ROC Curve of QDA Model on Test Set"
+#| echo: false
+#| warning: false
+#| message: false
+
+qda_posterior_yes <- qda_pred$posterior[, "yes"]
+
+pred_qda_rocr <- prediction(qda_posterior_yes, test_lda_scaled$y)
+perf_qda <- performance(pred_qda_rocr, "tpr", "fpr")
+auc_qda <- performance(pred_qda_rocr, "auc")@y.values[[1]]
+
+plot(perf_qda, lwd = 2,
+     main = "ROC Curve for QDA")
+abline(a = 0, b = 1, lty = 2, col = "red")
+text(x = 0.6, y = 0.2,
+     labels = paste("AUC =", round(auc_qda, 4)),
+     cex = 1.1)
+```
+
+The AUC of the QDA model is 0.7584@fig-qda-roc, which is higher than the 0.7136 achieved by the LDA model. This indicates that, in terms of overall ranking performance, QDA is better at distinguishing customer subscription preferences than LDA. In other words, not only does it identify more "yes" customers under the default classification rules, but it is also more effective at distinguishing between the two customer categories overall. \## Decision Tree
+
+### Model Description and Justification
+
+A decision tree classifier was applied as the first tree-based method. Decision trees recursively partition the feature space by selecting the variable and split point that best separates the classes at each node, measured by the Gini impurity criterion. The resulting model is fully interpretable, as its predictions can be explained through a sequence of human-readable if-then rules. This is especially useful in a banking context, where understanding why a client is predicted to subscribe is of clear practical importance.
 
 Given the substantial class imbalance in the dataset (88.8% "no"), equal class priors were assigned (`prior = c(0.5, 0.5)`) to prevent the tree from trivially favouring the majority class. Without this adjustment, a tree predicting "no" for every observation would achieve over 88% accuracy while providing no useful predictive information.
 
@@ -420,6 +771,7 @@ Given the substantial class imbalance in the dataset (88.8% "no"), equal class p
 #| echo: false
 #| warning: false
 #| message: false
+install.packages("rpart.plot")
 packages <-c("rpart",
             "rpart.plot",
             "randomForest",
@@ -454,9 +806,10 @@ tree_full <- rpart(y ~ ., data = train_data,
 # CP plot (shown in report)
 plotcp(tree_full)
 ```
+
 ### Model fitting and pruning
-A full unpruned tree was first grown with the complexity parameter `cp = 0`, allowing the tree to expand until no further splits were possible. Unpruned trees are prone to overfitting — they learn noise specific to the training data and generalise poorly to unseen observations. Pruning is therefore necessary to find the right balance between bias and variance.
-The optimal `cp` was selected using the 1-SE rule: rather than choosing the `cp` corresponding to the absolute minimum cross-validation error (which tends to favour overly complex trees), the largest `cp` whose cross-validation error falls within one standard error of the minimum was selected. As shown in @fig-tree-cp, the cross-validation error curve flattens quickly after approximately 35 nodes, indicating that additional complexity yields negligible improvement. The 1-SE rule selected a tree with only 3 leaf nodes, which is both parsimonious and less prone to overfitting.
+
+A full unpruned tree was first grown with the complexity parameter `cp = 0`, allowing the tree to expand until no further splits were possible. Unpruned trees are prone to overfitting — they learn noise specific to the training data and generalise poorly to unseen observations. Pruning is therefore necessary to find the right balance between bias and variance. The optimal `cp` was selected using the 1-SE rule: rather than choosing the `cp` corresponding to the absolute minimum cross-validation error (which tends to favour overly complex trees), the largest `cp` whose cross-validation error falls within one standard error of the minimum was selected. As shown in @fig-tree-cp, the cross-validation error curve flattens quickly after approximately 35 nodes, indicating that additional complexity yields negligible improvement. The 1-SE rule selected a tree with only 3 leaf nodes, which is both parsimonious and less prone to overfitting.
 
 ```{r}
 #| echo: false
@@ -489,14 +842,15 @@ rpart.plot(tree_pruned,
            main = "Pruned Decision Tree")
 
 ```
+
 ### Tree structure and interpretation
-The pruned tree (@fig-tree-plot) identifies two variables as the most informative predictors:
-First split — `euribor3m >= 1.3`: The Euribor 3-month rate, a macro-economic indicator reflecting the prevailing interest rate environment, forms the root split. When `euribor3m < 1.3` (low interest rate environment), the tree predicts "yes" with 83% probability, covering 14% of the test data. This is economically intuitive: when market interest rates are low, term deposits offer relatively more attractive returns, increasing clients' willingness to subscribe.
-Second split — `month`: Among observations where `euribor3m >= 1.3`, the contact month further differentiates clients. Contacts made in April, March, and October yield a 68% subscription rate, compared to 31% in the remaining months. This may reflect seasonal patterns in clients' financial planning or campaign timing effects.
-The simplicity of the final tree with two splits and three rules is both a strength and a limitation. It is highly interpretable and robust to overfitting, but it necessarily ignores the predictive information contained in the remaining variables.
+
+The pruned tree (@fig-tree-plot) identifies two variables as the most informative predictors: First split — `euribor3m >= 1.3`: The Euribor 3-month rate, a macro-economic indicator reflecting the prevailing interest rate environment, forms the root split. When `euribor3m < 1.3` (low interest rate environment), the tree predicts "yes" with 83% probability, covering 14% of the test data. This is economically intuitive: when market interest rates are low, term deposits offer relatively more attractive returns, increasing clients' willingness to subscribe. Second split — `month`: Among observations where `euribor3m >= 1.3`, the contact month further differentiates clients. Contacts made in April, March, and October yield a 68% subscription rate, compared to 31% in the remaining months. This may reflect seasonal patterns in clients' financial planning or campaign timing effects. The simplicity of the final tree with two splits and three rules is both a strength and a limitation. It is highly interpretable and robust to overfitting, but it necessarily ignores the predictive information contained in the remaining variables.
 
 ### Model evaluation
+
 Performance on the test set is summarised below in @tbl-tree-results.
+
 ```{r}
 #| echo: false
 #| warning: false
@@ -529,6 +883,7 @@ tree_results %>%
   cols_label(Metric = "Metric", Value = "Value") %>%
   tab_header(title = "Decision Tree: Performance on Test Set")
 ```
+
 Accuracy is a misleading metric here due to the class imbalance in the dataset. A classifier that predicts "no" for every observation would achieve 88.6% accuracy, the No Information Rate, yet the decision tree's accuracy of 80.95% is lower. This is expected: by assigning equal class priors, the model deliberately trades majority-class accuracy for a better ability to detect true subscribers.
 
 Sensitivity and AUC are more meaningful in this context. A Sensitivity of 0.597 means the model correctly identifies around 60% of clients who would actually subscribe, compared to only 22.8% under the unweighted tree. The AUC of 0.724 indicates moderate discriminative ability, considerably better than random classification (AUC = 0.5). The Balanced Accuracy of 0.717 further confirms that performance is reasonable across both classes.
@@ -536,6 +891,7 @@ Sensitivity and AUC are more meaningful in this context. A Sensitivity of 0.597 
 The Positive Predictive Value of 0.320 means that among clients predicted to subscribe, about 32% would do so. Given the base subscription rate of 11.4%, this still represents a substantial improvement in targeting efficiency over random outreach.
 
 ## Random Forest
+
 ```{r}
 #| echo: false
 #| warning: false
@@ -550,7 +906,9 @@ rf_default <- randomForest(y ~ .,
 print(rf_default)
 
 ```
+
 ### Model description and justification
+
 Random Forest is an ensemble learning method that constructs a large number of decision trees, each trained on a bootstrap sample of the training data. At each split, only a randomly selected subset of features is considered, which decorrelates the trees and reduces the variance of the ensemble compared to a single decision tree. Predictions are made by majority vote across all trees. This combination of bagging and feature randomisation makes Random Forest particularly robust to overfitting and well suited to tabular classification problems with mixed variable types.
 
 ```{r}
@@ -572,9 +930,10 @@ tuneRF(train_data[, -which(names(train_data) == "y")],
        ntreeTry = 200)
 
 ```
+
 ### Hyperparameter tuning
-The key hyperparameter in Random Forest is `mtry`, the number of variables randomly considered at each split. The default value in R for classification is $\lfloor\sqrt{p}\rfloor$, where $p$ is the number of predictors, giving `mtry = 4` in this case. To find the optimal value, `tuneRF` was applied, evaluating each candidate using Out-of-Bag (OOB) error on the training data.
-As shown in @fig-rf-tune, OOB error is minimised at `mtry = 2` (OOB error = 9.56%), with error increasing as `mtry` grows.
+
+The key hyperparameter in Random Forest is `mtry`, the number of variables randomly considered at each split. The default value in R for classification is $\lfloor\sqrt{p}\rfloor$, where $p$ is the number of predictors, giving `mtry = 4` in this case. To find the optimal value, `tuneRF` was applied, evaluating each candidate using Out-of-Bag (OOB) error on the training data. As shown in @fig-rf-tune, OOB error is minimised at `mtry = 2` (OOB error = 9.56%), with error increasing as `mtry` grows.
 
 ```{r}
 #| echo: false
@@ -600,7 +959,9 @@ best_thresh <- coords(roc_rf, "best",
 cat("Optimal threshold:", round(best_thresh, 4), "\n")
 
 ```
+
 ### Handling class imbalance
+
 The default classification threshold of 0.5 is poorly suited to imbalanced data, as it systematically under-predicts the minority class. Adjusting class weights was explored but found to reduce AUC by distorting the model's probability estimates. Instead, the threshold was optimised after fitting using Youden's J statistic, which identifies the value that maximises the sum of Sensitivity and Specificity simultaneously. The optimal threshold was 0.083, which reflects the low base rate of subscription (11.4%) in the dataset.
 
 ```{r}
@@ -640,12 +1001,15 @@ grid.arrange(p_acc, p_gini, ncol = 2,
 ```
 
 ### Variable importance
+
 @fig-rf-varimp presents variable importance under two measures. Mean Decrease in Accuracy captures how much predictive performance drops when a variable's values are randomly permuted, providing a direct measure of its contribution to model accuracy. Mean Decrease in Gini reflects the total reduction in node impurity attributable to each variable across all trees.
 
 Both measures consistently rank `euribor3m` as the most important predictor, reinforcing the finding from the decision tree that the prevailing interest rate environment is the strongest driver of subscription behaviour. `month` and `age` rank highly under Mean Decrease in Accuracy, while `age` and `job` are prominent under Mean Decrease in Gini. The two measures do not always agree because they capture different aspects of importance: permutation accuracy is more reliable when predictors are correlated, while Gini importance can favour variables with many distinct values. Taken together, the results suggest that macro-economic conditions, client demographics, and campaign timing are the most informative predictors. Variables such as `loan`, `housing`, and `contact` rank near the bottom on both measures, indicating limited independent predictive value once stronger predictors are accounted for.
 
 ### Model evaluation
+
 Performance on the test set at the optimal threshold is summarised in @tbl-rf-results.
+
 ```{r}
 #| echo: false
 #| warning: false
@@ -677,6 +1041,7 @@ rf_results %>%
   tab_header(title = "Random Forest: Performance on Test Set")
 
 ```
+
 The Random Forest outperforms the single decision tree across all key metrics. An AUC of 0.789 indicates that the model correctly ranks a randomly chosen subscriber above a randomly chosen non-subscriber approximately 79% of the time. Sensitivity of 0.636 means that roughly two thirds of true subscribers are correctly identified, an improvement over the decision tree (0.597). Specificity remains high at 0.867, confirming that this gain is not achieved by predicting "yes" indiscriminately. The Balanced Accuracy of 0.751 reflects a reasonable trade-off between the two classes given the degree of imbalance present.
 
 The Positive Predictive Value of 0.381 indicates that among clients flagged as likely subscribers, 38% would actually subscribe. This is more than three times the base subscription rate of 11.4%, meaning the model would considerably improve the efficiency of targeted outreach compared to contacting clients at random.
