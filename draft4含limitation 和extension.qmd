@@ -4,13 +4,39 @@ author: "Group 17"
 number-sections: true
 format: 
   pdf:
+    fig-pos: "H"
     fontsize: 12pt
     linestretch: 1.5
     geometry: margin=1in
-    embed-resources: true
-editor_options:
-  chunk_output_type: console
+include-in-header:
+  text: |
+    \AtBeginDocument{
+      \begin{titlepage}
+        \centering
+        \vspace*{\fill}
+        {\LARGE \textbf{Project 2: Bank marketing dataset}\par}
+        \vspace{1cm}
+        {\large Group 17\par}
+        \vspace{0.5cm}
+        {\large \today\par}
+        \vspace*{\fill}
+      \end{titlepage}
+      \setcounter{page}{1}
+    }
 ---
+
+
+# Introduction {#sec-intro}
+
+The goal of this project is to predict whether clients will subscribe to a term deposit by analyzing the marketing data of the bank. The research findings of this report can assist financial institutions in formulating more effective marketing strategies, thereby increasing clients conversion rates and reducing marketing costs.
+
+The data used in this study was sourced from a Portuguese bank and covered the detailed information of 17 marketing campaigns conducted by the bank from May 2008 to November 2010. This included the relevant data of 41,118 clients. The dataset included the basic characteristics of the clients, macroeconomic indicators, and variables related to the marketing campaigns. The response variable was a binary variable indicating whether the clients would subscribe to a term deposit ("Yes" or "No"). To enhance the efficiency of the analysis, 10,000 records were randomly selected from the original data as samples for modeling and analysis.
+
+# Method {#sec-me}
+
+To achieve the research objectives, this study will employ various classification methods, such as KNN, LDA, Tree-based methods, SVM, etc., to model the data and compare the models. These methods are applicable to binary classification problems and can also utilize multiple evaluation metrics to compare the predictive capabilities of the models. Moreover, through the comparison among different models, it is beneficial to better comprehensively understand the relationship between the data features and the prediction results.
+
+The research results will be compared and analyzed using appropriate evaluation metrics, thereby identifying the model with the best performance and further explaining its predictive capabilities. Ultimately, this will provide a reference basis for future practical applications.
 
 ```{r}
 #| echo: false
@@ -40,20 +66,6 @@ for(pkg in packages){
 }
 ```
 
-\thispagestyle{empty}
-\newpage
-
-# Introduction {#sec-intro}
-
-The goal of this project is to predict whether clients will subscribe to a term deposit by analyzing the marketing data of the bank. The research findings of this report can assist financial institutions in formulating more effective marketing strategies, thereby increasing clients conversion rates and reducing marketing costs.
-
-The data used in this study was sourced from a Portuguese bank and covered the detailed information of 17 marketing campaigns conducted by the bank from May 2008 to November 2010. This included the relevant data of 41,118 clients. The dataset included the basic characteristics of the clients, macroeconomic indicators, and variables related to the marketing campaigns. The response variable was a binary variable indicating whether the clients would subscribe to a term deposit ("Yes" or "No"). To enhance the efficiency of the analysis, 10,000 records were randomly selected from the original data as samples for modeling and analysis.
-
-# Method {#sec-me}
-
-To achieve the research objectives, this study will employ various classification methods, such as KNN, LDA, Tree-based methods, SVM, etc., to model the data and compare the models. These methods are applicable to binary classification problems and can also utilize multiple evaluation metrics to compare the predictive capabilities of the models. Moreover, through the comparison among different models, it is beneficial to better comprehensively understand the relationship between the data features and the prediction results.
-
-The research results will be compared and analyzed using appropriate evaluation metrics, thereby identifying the model with the best performance and further explaining its predictive capabilities. Ultimately, this will provide a reference basis for future practical applications.
 
 # Exploratory Analysis {#sec-EA}
 
