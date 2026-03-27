@@ -441,7 +441,8 @@ var_table %>%
 
 ### Feature Selection Summary {#sec-FSS .unnumbered}
 
-The final set of variables includes clients characteristics (e.g., `age`, `job`, `education`), campaign-related variables (e.g., `campaign`, `previous`, `poutcome`), and macroeconomic indicators (e.g., `euribor3m`, consumer indices). Variables with no practical value or low information content, such as duration and default, will be excluded. Additionally, multiple collinearity issues are addressed by retaining representative variables. Overall, the selected features lay a solid foundation for the subsequent modeling work.
+The final set of variables includes clients characteristics (e.g., `age`, `job`, `education`), campaign-related variables (e.g., `campaign`, `previous`, `poutcome`), and macroeconomic indicators (e.g., `euribor3m`, consumer indices). `duration` was excluded to avoid data leakage, as it is only observable after a call has ended. `default` was removed due to near-zero variance, with no instances of "yes" observed in the 
+training data. Additionally, multiple collinearity issues are addressed by retaining representative variables. Overall, the selected features lay a solid foundation for the subsequent modeling work.
 
 # Formal Analysis {#sec-FA}
 
