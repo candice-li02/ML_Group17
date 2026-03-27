@@ -1,5 +1,5 @@
 ---
-title: "Project 2: Bank marketing dataset "
+title: "Predicting Term Deposit Subscription: A Comparative Classification Analysis of Bank Marketing Data"
 author: "Group 17"
 number-sections: true
 format: 
