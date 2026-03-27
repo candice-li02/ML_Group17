@@ -1,0 +1,1209 @@
+---
+title: "Project 2: Bank marketing dataset "
+author: "Group 17"
+number-sections: true
+format: 
+  pdf:
+    fontsize: 12pt
+    linestretch: 1.5
+    geometry: margin=1in
+    embed-resources: true
+editor_options:
+  chunk_output_type: console
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# load the libraries we will use.
+packages <-c("skimr",
+             "corrplot",
+             "rpart",
+             "gt",
+             "dplyr",
+             "ggplot2",
+             "gridExtra",
+             "caret",
+            "rpart.plot",
+            "randomForest",
+            "caret",
+            "pROC",
+            "ROCR",
+            "MASS"
+            )  
+
+# Library packages
+for(pkg in packages){
+  library(pkg, character.only = TRUE)
+}
+```
+
+\thispagestyle{empty}
+\newpage
+
+# Introduction {#sec-intro}
+
+The aim of this project is to predict whether a client will subscribe to a term deposit using the bank marketing dataset provided for Project 2. The data were collected from direct marketing campaigns carried out by a Portuguese banking institution, where clients were contacted by telephone and, in some cases, contacted more than once before the final outcome was recorded. The full dataset includes information on 41,118 clients from 17 campaigns conducted between May 2008 and November 2010. For this analysis, 10,000 records were used. The response variable is binary and indicates whether the client subscribed to a term deposit (“yes” or “no”).
+
+This report begins with exploratory data analysis to understand the main features of the dataset and to guide the preprocessing stage. It then compares a range of classification models in order to determine which method performs best for predicting term deposit subscription in this dataset.
+
+# Method {#sec-me}
+
+The analysis starts with exploratory data analysis and preprocessing, with the aim of understanding the variable structure, checking data quality, and preparing suitable predictors for modelling. Based on this, several classification methods are fitted and compared.
+
+The models considered include logistic regression, which is widely used for binary classification (Hosmer et al., 2013), and linear discriminant analysis (Fisher, 1936). K-nearest neighbours is included as an instance-based learning method. Tree-based approaches are represented by decision trees and random forests (Breiman, 2001), while support vector machines are used as a margin-based classification method (Cortes and Vapnik, 1995).
+
+Model performance is assessed using appropriate classification metrics, and the final model is selected based on its predictive performance on the test set.
+
+# Exploratory Analysis {#sec-EA}
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| include: false
+
+## read the data and take a quick look at the data
+
+bank <- read.csv("group_17.csv", header=TRUE)
+
+summary(bank)
+
+#1. Target people for subscription: Primarily young and middle-aged individuals (with an average age of 40), the majority of whom are new  clients (never having been contacted before).
+#2. Call situation: There is an obvious variation in call duration (ranging from 1 to 82 minutes), indicating that there are differences in client responses;also, some clients have been contacted excessively (up to 37 times).
+#3. External economic background: The interest rate fluctuations in this data are relatively obvious (ranging from 0.6% to 5.0%), and sometimes changes in the external economic environment may affect clients' willingness to deposit.
+
+skim(bank)
+
+#1. Data completeness: There are no missing values in these 10,000 pieces of data (complete rate 100%), so the data can be directly used without the need for data filling.
+#2. Client diversity: It includes 12 types of occupations and 8 levels of education . The target variable y is a binary classification (yes or no).
+#3. Increasing new clients campaign: Over 75% of the clients ( pdays from the 25th percentile to the 100th percentile, all is 999) have never been contacted before, indicating that this is a marketing campaign to increase new clients.
+#4. Client situation:
+#Main client group: Concentrated in the age range of 32 to 47.
+#Call situation: Half of the calls are no longer than 3 minutes (180 seconds).
+#Interest rate situation: At the time of data recording, the market was in a high-interest-rate period (the median interest rate was 4.86%).
+
+```
+
+`Duration` is unknown before making the call, and it is highly correlated with our target variable (we can know whether the client subscribes after the call, and clients with longer call durations are more likely to subscribe). If it is included in our model, it is equivalent to using "future information", which would lead to logically unreasonable predictions and make the constructed model of no practical value.Therefore, the analysis removes the `duration` variable to make the model more practical.
+
+On the other hand,the dataset is highly imbalanced, with approximately 89% of observations belonging to the "no" class and around 11% to the "yes" class. A random seed (1234) was set, and the dataset was divided into training and test sets using an 80:20 ratio. After that, the class distribution remains consistent. In the training set, 88.84% of observations are "no" and 11.16% are "yes". Similarly, in the test set, 88.6% are "no" and 11.4% are "yes". It indicates that the random split has preserved the original class distribution and ensures that both the training and test sets are representative of the overall dataset. This is particularly important in the presence of class imbalance, as it helps avoid biased model evaluation and improves the reliability of performance comparisons across different models.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| include: false
+
+#Data preprocessing
+
+bank$duration <- NULL #Removing the "duration" variable is to make the model practical: this variable is unknown before making the call, and it is highly correlated with our target variable (we can know whether the client subscribes after the call, and clients with longer call durations are more likely to subscribe). If it is included in our model, it is equivalent to using "future information", which would lead to logically unreasonable predictions and make the constructed model of no practical value.
+
+names(bank)
+
+#Change the variable to a 1 or 0 variable indicating whether the client has been contacted or not
+bank$pdays_contact <- ifelse(bank$pdays == 999, 0, 1)
+bank$pdays <- NULL
+
+# to change the character variables to factors for better fitting
+bank$job <- as.factor(bank$job)
+bank$marital <- as.factor(bank$marital)
+bank$education <- as.factor(bank$education)
+bank$default <- as.factor(bank$default)
+bank$housing <- as.factor(bank$housing)
+bank$loan <- as.factor(bank$loan)
+bank$contact <- as.factor(bank$contact)
+bank$month <- as.factor(bank$month)
+bank$day_of_week <- as.factor(bank$day_of_week)
+bank$poutcome <- as.factor(bank$poutcome)
+bank$pdays_contact <- as.factor(bank$pdays_contact)
+bank$y <- as.factor(bank$y)
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| include: false
+
+# split the data
+# set seed
+set.seed(1234)
+
+# use 8:2 to split the data to two part (train data and test data)
+
+train_index <- sample(1:nrow(bank), 0.8 * nrow(bank))
+
+train_data <- bank[train_index, ]
+test_data  <- bank[-train_index, ]
+
+# check the dimensions
+dim(train_data)
+dim(test_data)
+
+# check proportion of y
+prop.table(table(train_data$y))
+prop.table(table(test_data$y))
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: Distribution of Target Variable
+#| label: fig-scat1
+#| fig-align: center
+#| fig-width: 6
+#| fig-height: 4
+
+#table(bank$y)
+
+prop <- prop.table(table(train_data$y))
+
+bp <- barplot(table(train_data$y), ylim=c(0,8000))
+text(bp, table(train_data$y), paste0(round(prop*100, 1), "%"), pos = 3)#to add the proportion to the bar chart for better show in the report 
+
+```
+
+@fig-scat1 This chart illustrates the uneven distribution of the target variable y: the proportion of non-subscribed clients reaches 88.8%, while the proportion of successfully converted clients is only 11.2%. Due to this distribution characteristic, our subsequent logistic regression model may exhibit certain bias during the fitting process. Therefore, when evaluating the model's performance, we do not solely rely on the overall accuracy rate (because even if the model predicts all results as "no", the final accuracy rate can still exceed 80%). On the other hand, we will pay more attention to the model's ability to identify these 11.21% key samples, so that the final prediction results have practical reference value.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# prepare data for correlation analysis (continuous variable)
+
+bank_num <- train_data[,c("age",
+                    "campaign",
+                    "previous",
+                    "emp.var.rate",
+                    "cons.price.idx",
+                    "cons.conf.idx",
+                    "euribor3m",
+                    "nr.employed")]
+
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: Correlation Matrix of Numerical Variables
+#| label: fig-scat2
+#| fig-align: center
+#| fig-width: 5
+#| fig-height: 4.5
+
+corrplot(cor(bank_num),
+         method = "number",#low correlation will be close to white number
+         type = "upper", #show half of the plot is enough
+         order = "hclust",#to better show the most correlated part
+         tl.col = "black",
+         number.cex = 0.7)
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| include: false
+
+# The three variables (emp.var.rate, euribor3m, nr.employed) are highly correlated, so we use pca to decide to delete which two variables
+
+bank.pca <- princomp(bank_num, cor = TRUE)
+
+summary(bank.pca)
+
+bank.pca$loadings
+
+```
+
+```{r}
+#| echo: false
+#| label: tbl-pca
+#| tbl-cap: Principal Component Loadings for First Two
+
+pca_loadings <- as.data.frame(unclass(bank.pca$loadings)) #use unclass() to delete NA
+
+# add variable name
+pca_loadings$variable <- rownames(pca_loadings)
+
+# create the gt table
+pca_loadings %>%
+  select(variable, Comp.1, Comp.2) %>%
+  gt() %>%
+  fmt_number(
+    columns = c(Comp.1, Comp.2),
+    decimals = 2 # to keep two decimal places
+  ) 
+
+```
+
+By combining the correlation matrix @fig-scat2 and Principal Component Analysis @tbl-pca, it can be observed that `euribor3m`, `nr.employed`, and `emp.var.rate` have a high degree of positive correlation (the pairwise correlation coefficients are all greater than 0.9), and multicollinearity can also be seen in the first principal component (Comp.1). For the subsequent modeling performance, we decided to exclude `nr.employed` and `emp.var.rate` and retain `euribor3m`. Because `euribor3m` represents the Euro Interbank Offered Rate, it can better reflect the macro-financial situation during bank marketing, and can relatively better help us explain the final subscription situation of clients. Meanwhile, since the variable `default` only has two values, "no" and "unknown", and over 79% of the cases are "no" with no "yes", the available information is extremely limited. Therefore, this variable is removed for reducing noise in the future model.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# delete nr.employed, and emp.var.rate variable
+
+train_data$nr.employed <- NULL
+train_data$emp.var.rate <- NULL
+test_data$nr.employed <- NULL
+test_data$emp.var.rate <- NULL
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| include: false
+
+# to have a look at category variable
+# x and y are all category variable ,so i use proportion to better show the relationship between them,to see who is more likely to subscribe( set  position = "fill" to show the proportion barplot)
+
+ggplot(train_data, aes(job, fill = y)) + geom_bar(position = "fill")
+# can see clear difference
+
+ggplot(train_data, aes(marital, fill = y)) + geom_bar(position = "fill")
+# table(train_data$marital)
+# difference is not very clear.Just 13 records are "unknown".So it's possible most of this type is "no".
+
+ggplot(train_data, aes(education, fill = y)) + geom_bar(position = "fill")
+# can see clear difference
+
+ggplot(train_data, aes(default, fill = y)) + geom_bar(position = "fill")
+# difference is not very clear
+# there is no "yes" in the default variable,the information is not enough,so i use table() to decide whether i need to delete it
+
+table(train_data$default)
+
+# Since the variable default only has two values, "no" and "unknown", and over 79% of the cases are "no" with no "yes", the available information is extremely limited. Therefore, we have decided to remove this variable.
+
+train_data$default <- NULL
+test_data$default <- NULL
+
+ggplot(train_data, aes(housing, fill = y)) + geom_bar(position = "fill")
+# difference is not very clear
+
+ggplot(train_data, aes(loan, fill = y)) + geom_bar(position = "fill")
+# difference is not very clear
+
+ggplot(train_data, aes(contact, fill = y)) + geom_bar(position = "fill")
+# cellular might be more useful
+
+ggplot(train_data, aes(month, fill = y)) + geom_bar(position = "fill")
+# can see clear difference
+
+ggplot(train_data, aes(day_of_week, fill = y)) + geom_bar(position = "fill")
+# difference is not very clear
+
+ggplot(train_data, aes(poutcome, fill = y)) + geom_bar(position = "fill")
+# can see clear difference
+
+ggplot(train_data, aes(pdays_contact, fill = y)) + geom_bar(position = "fill")
+# can see clear difference
+
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: Subscription Rate Across Key Categorical Variables
+#| label: fig-scat3
+#| fig-align: center
+#| fig-width: 6
+#| fig-height: 4.5
+
+# choose job, education, poutcome,contact variables to show their relationship with y，use ggplot to do it
+
+p1 <- ggplot(train_data, aes(poutcome, fill = y)) +
+  geom_bar(position = "fill") +
+  labs(title = "Previous Outcome", x = "poutcome", y = "Proportion") +
+  theme_minimal() + #use a simple theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))#to better show the x label ,rotate it
+
+
+p2 <- ggplot(train_data, aes(job, fill = y)) +
+  geom_bar(position = "fill") +
+  labs(title = "Job", x = "job", y = "Proportion") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))#to better show the x label ,rotate it
+
+
+p3 <- ggplot(train_data, aes(education, fill = y)) +
+  geom_bar(position = "fill") +
+  labs(title = "Education", x = "education", y = "Proportion") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))#to better show the x label ,rotate it
+
+p4 <- ggplot(train_data, aes(contact, fill = y)) +
+  geom_bar(position = "fill") +
+  labs(title = "Contact Type", x = "contact", y = "Proportion") +
+  theme_minimal()
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+# use grid.arrange to put four graphs in one plot
+
+```
+
+@fig-scat3 This set of graphs respectively shows the relationships between several key categorical variables and the variable indicating whether the client subscribes (y). From the graphs, it can be seen that the previous marketing outcome (`poutcome`) obviously affects whether the client subscribes this time. Clients who were successfully marketed before (success) have a higher probability of subscribing than those who were marketing failed (failure) or had no previous contact (nonexistent). Moreover, there are certain differences between different occupations (`job`) and educational levels (`education`), indicating that the social characteristics of the clients may have an impact on the subscription decision. At the same time, there are also certain differences in contact methods (`contact`), with clients contacted via mobile phone (cellular) having a slightly higher chance of subscribing than those contacted via telephone (telephone).
+
+Overall, historical marketing results, client social characteristics, and communication channels may all have an impact on whether the client subscribes this time. Therefore, these variables will have certain predictive value in the subsequent modeling process.
+
+@tbl-var presents the variables that we ultimately used for the analysis.
+
+```{r}
+#| echo: false
+#| label: tbl-var
+#| tbl-cap: Variables Used in the Analysis
+
+var_table <- data.frame(
+  Variable = c(
+    "y",
+    "age","job","marital","education","housing","loan",
+    "contact","month","day_of_week",
+    "campaign","pdays_contact","previous","poutcome",
+    "cons.price.idx","cons.conf.idx","euribor3m"
+  ),
+  Type = c(
+    "Categorical",
+    "Numeric","Categorical","Categorical","Categorical","Categorical","Categorical",
+    "Categorical","Categorical","Categorical",
+    "Numeric","Categorical","Numeric","Categorical",
+    "Numeric","Numeric","Numeric"
+  ),
+  Description = c(
+    "Term deposit subscription (yes/no)",
+    "Client age",
+    "Job type",
+    "Marital status",
+    "Education level",
+    "Housing loan status",
+    "Personal loan status",
+    "Contact type",
+    "Last contact month",
+    "Last contact weekday",
+    "Number of contacts in current campaign",
+    "Whether previously contacted",
+    "Number of previous contacts",
+    "Previous campaign outcome",
+    "Consumer price index",
+    "Consumer confidence index",
+    "Euribor 3-month rate"
+  )
+)
+
+var_table %>%
+  gt() %>%
+  cols_label(
+    Variable = "Variable",
+    Type = "Type",
+    Description = "Description"
+  ) %>%
+  cols_width(
+    Variable ~ px(90),
+    Type ~ px(90),
+    Description ~ px(300)
+  ) %>%
+  tab_options(
+    table.font.size = px(10),
+    column_labels.font.size = px(10),
+    data_row.padding = px(2)
+  )
+```
+
+# Formal Analysis {#sec-FA}
+
+## Linear Discriminant Analysis (LDA)
+
+### Model Specification
+
+To avoid data leakage, `duration` was excluded from the analysis. For the LDA model, only continuous numerical predictors were included: `age`, `campaign`, `previous`, `cons.price.idx`, `cons.conf.idx`, and `euribor3m`, with `y` as the response variable.
+
+As shown in @tbl-lda-var, a comparison of the group variances and covariance structures suggested that the equal covariance assumption was not fully satisfied. For example, the covariances for pairs such as `age` with `euribor3m` and `age` with `previous` differ across the two classes. LDA was therefore retained as a baseline discriminant model, while recognising that this assumption may be imperfect for the current dataset.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Select continuous numeric variables for LDA
+lda_vars <- c("age", "campaign", "previous",
+              "cons.price.idx", "cons.conf.idx", "euribor3m", "y")
+
+train_lda <- train_data[, lda_vars]
+test_lda  <- test_data[, lda_vars]
+
+# Ensure target variable y is a factor variable
+train_lda$y <- as.factor(train_lda$y)
+test_lda$y  <- as.factor(test_lda$y)
+```
+
+```{r}
+#| label: tbl-lda-var
+#| tbl-cap: "Variance Comparison of Continuous Variables by Class in the Training Set"
+#| echo: false
+#| warning: false
+#| message: false
+
+num_vars <- c("age", "campaign", "previous",
+              "cons.price.idx", "cons.conf.idx", "euribor3m")
+
+var_summary <- data.frame(
+  Variable = num_vars,
+  Var_no = sapply(train_lda[train_lda$y == "no", num_vars], var),
+  Var_yes = sapply(train_lda[train_lda$y == "yes", num_vars], var)
+)
+
+var_summary %>%
+  gt() %>%
+  fmt_number(columns = c(Var_no, Var_yes), decimals = 3) %>%
+  tab_options(
+    table.font.size = px(12)
+  )
+```
+
+```{r}
+#| label: lda-cov-check
+#| echo: false
+#| warning: false
+#| message: false
+#| results: false
+
+cov_no  <- cov(train_lda[train_lda$y == "no", num_vars])
+cov_yes <- cov(train_lda[train_lda$y == "yes", num_vars])
+
+round(cov_no, 3)
+round(cov_yes, 3)
+```
+
+### Model fitting
+
+After standardising the predictors using the training-set mean and standard deviation, the LDA model was fitted to the training data. The LD1 coefficients suggest that `euribor3m`, `cons.price.idx`, and `cons.conf.idx` contributed most to class separation, while `campaign` and `age` had relatively small contributions (@tbl-lda-coefs).
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+train_lda_scaled <- train_lda
+test_lda_scaled  <- test_lda
+
+train_means <- sapply(train_lda_scaled[, num_vars], mean)
+train_sds   <- sapply(train_lda_scaled[, num_vars], sd)
+
+train_lda_scaled[, num_vars] <- scale(train_lda_scaled[, num_vars],
+                                      center = train_means,
+                                      scale = train_sds)
+
+test_lda_scaled[, num_vars] <- scale(test_lda_scaled[, num_vars],
+                                     center = train_means,
+                                     scale = train_sds)
+```
+
+```{r}
+#| label: tbl-lda-coefs
+#| tbl-cap: "Linear Discriminant Coefficients (LD1)"
+#| echo: false
+#| warning: false
+#| message: false
+
+lda_model <- lda(y ~ ., data = train_lda_scaled)
+
+ld1_coefs <- data.frame(
+  Variable = rownames(lda_model$scaling),
+  LD1_Coefficient = lda_model$scaling[, 1]
+)
+
+ld1_coefs %>%
+  arrange(desc(abs(LD1_Coefficient))) %>%
+  gt() %>%
+  fmt_number(columns = LD1_Coefficient, decimals = 4) %>%
+  tab_options(
+    table.width = pct(20),
+    table.font.size = px(12)
+  )
+```
+
+### Model Evaluation
+
+On the test set, LDA achieved an AUC of 0.714, with sensitivity of 0.316, specificity of 0.959, and balanced accuracy of 0.637. This indicates that the model provided moderate discrimination, although its performance was limited by the approximate violation of the equal covariance assumption.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# LDA prediction on test set
+lda_pred_test  <- predict(lda_model, newdata = test_lda_scaled)
+lda_class_test <- lda_pred_test$class
+
+# Confusion matrix
+cm_lda <- confusionMatrix(lda_class_test, test_lda_scaled$y, positive = "yes")
+
+# AUC
+lda_posterior_yes <- lda_pred_test$posterior[, "yes"]
+roc_lda <- roc(test_lda_scaled$y, lda_posterior_yes, quiet = TRUE)
+
+# F1
+precision_lda <- cm_lda$byClass["Pos Pred Value"]
+recall_lda    <- cm_lda$byClass["Sensitivity"]
+f1_lda        <- 2 * precision_lda * recall_lda / (precision_lda + recall_lda)
+
+
+
+lda_results <- data.frame(
+  Model = "LDA",
+  Accuracy = unname(cm_lda$overall["Accuracy"]),
+  Balanced_Accuracy = unname(cm_lda$byClass["Balanced Accuracy"]),
+  Sensitivity = unname(cm_lda$byClass["Sensitivity"]),
+  Specificity = unname(cm_lda$byClass["Specificity"]),
+  Precision = unname(cm_lda$byClass["Pos Pred Value"]),
+  F1_Score = unname(f1_lda),
+  AUC = as.numeric(roc_lda$auc)
+)
+```
+
+## Quadratic Discriminant Analysis(QDA)
+
+### Model Description and Justification
+
+The QDA model uses the same set of continuous predictors as the LDA model: `age`, `campaign`, `previous`, `cons.price.idx`, `cons.conf.idx`, and `euribor3m`, with `y` as the response variable. The variable duration was excluded earlier because it would introduce data leakage, so it is not included here. To ensure comparability across models, the training and test sets use the same standardised variables as in the LDA analysis.
+
+Unlike LDA, QDA does not assume a common covariance matrix across classes. Since the earlier variance and covariance checks suggested that the two classes differ in their covariance structure, QDA provides a more flexible alternative and is therefore a reasonable extension of the LDA model for this dataset.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| results: false
+
+# Fit QDA model
+qda_model <- qda(y ~ ., data = train_lda_scaled)
+
+# View model results
+qda_model
+```
+
+The fitted QDA model also reflects the class imbalance observed in the data. The prior probabilities for the "no" and "yes" classes are 0.8884 and 0.1116 respectively, showing that non-subscribers make up the large majority of the sample. In addition, the group means suggest that "previous" tends to be higher in the "yes" class, while `euribor3m` tends to be lower. This indicates that previous contact history and macroeconomic conditions remain important for distinguishing between the two outcome classes.
+
+### Model Evaluation
+
+The predictive performance of the QDA model was evaluated on the test set using several classification metrics. As shown in @tbl-qda-results, the model achieved an accuracy of 0.876 and a balanced accuracy of 0.672. The specificity was relatively high at 0.936, indicating that the model performed well in identifying clients who did not subscribe. However, the sensitivity was much lower at 0.408, showing that the model was less effective at identifying actual subscribers. The AUC of 0.758 suggests a moderate level of discrimination overall.
+
+Taken together, these results show that QDA performed reasonably well as a classifier, but its predictive ability was stronger for the majority "no" class than for the minority yes class. This pattern is consistent with the class imbalance in the dataset.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# QDA prediction on test set
+qda_pred_test  <- predict(qda_model, newdata = test_lda_scaled)
+qda_class_test <- qda_pred_test$class
+
+# Confusion matrix
+cm_qda <- confusionMatrix(qda_class_test, test_lda_scaled$y, positive = "yes")
+
+# AUC
+qda_posterior_yes <- qda_pred_test$posterior[, "yes"]
+roc_qda <- roc(test_lda_scaled$y, qda_posterior_yes, quiet = TRUE)
+
+# F1
+precision_qda <- cm_qda$byClass["Pos Pred Value"]
+recall_qda    <- cm_qda$byClass["Sensitivity"]
+f1_qda        <- 2 * precision_qda * recall_qda / (precision_qda + recall_qda)
+
+
+qda_results <- data.frame(
+  Model = "QDA",
+  Accuracy = unname(cm_qda$overall["Accuracy"]),
+  Balanced_Accuracy = unname(cm_qda$byClass["Balanced Accuracy"]),
+  Sensitivity = unname(cm_qda$byClass["Sensitivity"]),
+  Specificity = unname(cm_qda$byClass["Specificity"]),
+  Precision = unname(cm_qda$byClass["Pos Pred Value"]),
+  F1_Score = unname(f1_qda),
+  AUC = as.numeric(roc_qda$auc)
+)
+```
+
+## Decision Tree
+
+### Model Description and Justification
+
+A decision tree classifier was applied as the first tree-based method. Decision trees recursively partition the feature space by selecting the variable and split point that best separates the classes at each node, measured by the Gini impurity criterion. The resulting model is fully interpretable, as its predictions can be explained through a sequence of human-readable if-then rules. This is especially useful in a banking context, where understanding why a client is predicted to subscribe is of clear practical importance.
+
+Given the substantial class imbalance in the dataset (88.8% "no"), equal class priors were assigned (`prior = c(0.5, 0.5)`) to prevent the tree from trivially favouring the majority class. Without this adjustment, a tree predicting "no" for every observation would achieve over 88% accuracy while providing no useful predictive information.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "CP Plot for Decision Tree Pruning"
+#| label: fig-tree-cp
+#| fig-align: center
+#| fig-width: 6
+#| fig-height: 4
+
+set.seed(1234)
+
+# Build the full tree with class weights to handle imbalance
+tree_full <- rpart(y ~ ., data = train_data,
+                   method = "class",
+                   parms = list(prior = c(0.5, 0.5)),  # equal prior to handle imbalance
+                   control = rpart.control(cp = 0))
+
+# CP plot (shown in report)
+plotcp(tree_full)
+```
+
+### Model fitting and pruning
+
+A full unpruned tree was first grown with the complexity parameter `cp = 0`, allowing the tree to expand until no further splits were possible. Unpruned trees are prone to overfitting — they learn noise specific to the training data and generalise poorly to unseen observations. Pruning is therefore necessary to find the right balance between bias and variance. The optimal `cp` was selected using the 1-SE rule: rather than choosing the `cp` corresponding to the absolute minimum cross-validation error (which tends to favour overly complex trees), the largest `cp` whose cross-validation error falls within one standard error of the minimum was selected. As shown in @fig-tree-cp, the cross-validation error curve flattens quickly after approximately 35 nodes, indicating that additional complexity yields negligible improvement. The 1-SE rule selected a tree with only 3 leaf nodes, which is both parsimonious and less prone to overfitting.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Pruned Decision Tree"
+#| label: fig-tree-plot
+#| fig-align: center
+#| fig-width: 4.5
+#| fig-height: 3
+
+# Use 1-SE rule to pick the smallest tree within 1 SE of minimum xerror
+cp_table <- tree_full$cptable
+min_xerror <- min(cp_table[, "xerror"])
+se_threshold <- min_xerror + cp_table[which.min(cp_table[, "xerror"]), "xstd"]
+best_cp <- cp_table[cp_table[, "xerror"] <= se_threshold, "CP"][1]
+
+tree_pruned <- prune(tree_full, cp = best_cp)
+
+# Visualisation
+rpart.plot(tree_pruned, 
+           type = 4, 
+           extra = 104,
+           cex = 1,
+           box.palette = c("#C6DBEF", "#74C476"),
+           shadow.col = "gray80",
+           border.col = "white",
+           split.font = 1,
+           split.cex = 1)
+
+```
+
+### Tree structure and interpretation
+
+The pruned tree (@fig-tree-plot) identifies two variables as the most informative predictors: First split — `euribor3m >= 1.3`: The Euribor 3-month rate, a macro-economic indicator reflecting the prevailing interest rate environment, forms the root split. When `euribor3m < 1.3` (low interest rate environment), the tree predicts "yes" with 83% probability, covering 14% of the test data. This is economically intuitive: when market interest rates are low, term deposits offer relatively more attractive returns, increasing clients' willingness to subscribe. Second split — `month`: Among observations where `euribor3m >= 1.3`, the contact month further differentiates clients. Contacts made in April, March, and October yield a 68% subscription rate, compared to 31% in the remaining months. This may reflect seasonal patterns in clients' financial planning or campaign timing effects. The simplicity of the final tree with two splits and three rules is both a strength and a limitation. It is highly interpretable and robust to overfitting, but it necessarily ignores the predictive information contained in the remaining variables.
+
+### Model evaluation
+
+The predictive performance of the decision tree model was assessed on the test set using several classification metrics. The model achieved an accuracy of 0.810 and a balanced accuracy of 0.717 on the test set. Its sensitivity was 0.597 and its specificity was 0.837, showing that the model was better at identifying clients who did not subscribe than those who did.
+
+The precision was 0.320 and the F1 score was 0.417, which suggests only moderate performance in identifying the minority yes class. The AUC was 0.724, indicating a reasonable overall ability to distinguish between the two classes.
+
+Overall, the decision tree gave moderate predictive performance. It was more effective for the majority no class, but still provided a useful and interpretable baseline among the tree-based methods.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Prediction
+pred_tree <- predict(tree_pruned, test_data, type = "class")
+prob_tree  <- predict(tree_pruned, test_data, type = "prob")[, "yes"]
+
+# Confusion matrix and ROC
+cm_tree  <- confusionMatrix(pred_tree, test_data$y, positive = "yes")
+roc_tree <- roc(test_data$y, prob_tree, quiet = TRUE)
+
+# F1 score
+precision_tree <- cm_tree$byClass["Pos Pred Value"]
+recall_tree    <- cm_tree$byClass["Sensitivity"]
+f1_tree        <- 2 * precision_tree * recall_tree / (precision_tree + recall_tree)
+
+tree_results <- data.frame(
+  Metric = c("Accuracy", "Balanced Accuracy", "Sensitivity",
+             "Specificity", "Precision", "F1 Score", "AUC"),
+  Value = c(
+    round(cm_tree$overall["Accuracy"], 4),
+    round(cm_tree$byClass["Balanced Accuracy"], 4),
+    round(cm_tree$byClass["Sensitivity"], 4),
+    round(cm_tree$byClass["Specificity"], 4),
+    round(precision_tree, 4),
+    round(f1_tree, 4),
+    round(auc(roc_tree), 4)
+  )
+)
+
+```
+
+## Random Forest
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| include: false
+set.seed(1234)
+
+# Default model to check OOB error
+rf_default <- randomForest(y ~ ., 
+                           data = train_data,
+                           ntree = 500,
+                           importance = TRUE)
+
+```
+
+### Model description and justification
+
+Random Forest is an ensemble learning method that constructs a large number of decision trees, each trained on a bootstrap sample of the training data. At each split, only a randomly selected subset of features is considered, which decorrelates the trees and reduces the variance of the ensemble compared to a single decision tree. Predictions are made by majority vote across all trees. This combination of bagging and feature randomisation makes Random Forest particularly robust to overfitting and well suited to tabular classification problems with mixed variable types.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "OOB Error vs mtry for Random Forest Tuning"
+#| label: fig-rf-tune
+#| fig-align: center
+#| fig-width: 6
+#| fig-height: 4
+
+# Tune mtry
+set.seed(1234)
+
+capture.output(
+  tuneRF(
+    train_data[, -which(names(train_data) == "y")],
+    train_data$y,
+    stepFactor = 1.5,
+    improve = 0.01,
+    ntreeTry = 200
+  )
+)
+
+```
+
+### Hyperparameter tuning
+
+The key hyperparameter in Random Forest is `mtry`, the number of variables randomly considered at each split. The default value in R for classification is $\lfloor\sqrt{p}\rfloor$, where $p$ is the number of predictors, giving `mtry = 4` in this case. To find the optimal value, `tuneRF` was applied, evaluating each candidate using Out-of-Bag (OOB) error on the training data. As shown in @fig-rf-tune, OOB error is minimised at `mtry = 2` (OOB error = 9.56%), with error increasing as `mtry` grows.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| include: false 
+
+# Final model with best mtry and class weights
+set.seed(1234)
+rf_final <- randomForest(y ~ ., data = train_data,
+                         ntree = 500,
+                         mtry = 2,  
+                    # mtry=2 has lowest OOB error
+                         importance = TRUE)
+
+prob_rf <- predict(rf_final, test_data, type = "prob")[, "yes"]
+roc_rf  <- roc(test_data$y, prob_rf, quiet = TRUE)           
+                          
+# Find the best threshold to maximize sensitivity and specificity
+best_thresh <- coords(roc_rf, "best", 
+                      best.method = "youden",
+                      ret = "threshold")$threshold
+
+invisible(cat("Optimal threshold:", round(best_thresh, 4), "\n"))
+
+```
+
+### Handling class imbalance
+
+The default classification threshold of 0.5 is poorly suited to imbalanced data, as it systematically under-predicts the minority class. Adjusting class weights was explored but found to reduce AUC by distorting the model's probability estimates. Instead, the threshold was optimised after fitting using Youden's J statistic, which identifies the value that maximises the sum of Sensitivity and Specificity simultaneously. The optimal threshold was 0.083, which reflects the low base rate of subscription (11.4%) in the dataset.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Variable Importance Plot - Random Forest (Mean Decrease in Accuracy and Gini)"
+#| label: fig-rf-varimp
+#| fig-align: center
+#| fig-width: 6
+#| fig-height: 4
+
+
+# Variable importance plot
+importance_df <- as.data.frame(importance(rf_final))
+importance_df$variable <- rownames(importance_df)
+
+p_acc <- ggplot(importance_df,
+                aes(x = MeanDecreaseAccuracy,
+                    y = reorder(variable, MeanDecreaseAccuracy))) +
+  geom_point(color = "steelblue", size = 2.5) +
+  labs(title = "Mean Decrease Accuracy",
+       x = "Mean Decrease Accuracy", y = NULL) +
+  theme_minimal(base_size = 11)
+
+p_gini <- ggplot(importance_df,
+                 aes(x = MeanDecreaseGini,
+                     y = reorder(variable, MeanDecreaseGini))) +
+  geom_point(color = "darkorange", size = 2.5) +
+  labs(title = "Mean Decrease Gini",
+       x = "Mean Decrease Gini", y = NULL) +
+  theme_minimal(base_size = 11)
+
+grid.arrange(p_acc, p_gini, ncol = 2,
+             top = "Variable Importance - Random Forest")
+
+```
+
+### Variable importance
+
+@fig-rf-varimp presents variable importance under two measures. Mean Decrease in Accuracy captures how much predictive performance drops when a variable's values are randomly permuted, providing a direct measure of its contribution to model accuracy. Mean Decrease in Gini reflects the total reduction in node impurity attributable to each variable across all trees.
+
+Both measures consistently rank `euribor3m` as the most important predictor, reinforcing the finding from the decision tree that the prevailing interest rate environment is the strongest driver of subscription behaviour. `month` and `age` rank highly under Mean Decrease in Accuracy, while `age` and `job` are prominent under Mean Decrease in Gini. The two measures do not always agree because they capture different aspects of importance: permutation accuracy is more reliable when predictors are correlated, while Gini importance can favour variables with many distinct values. Taken together, the results suggest that macro-economic conditions, client demographics, and campaign timing are the most informative predictors. Variables such as `loan`, `housing`, and `contact` rank near the bottom on both measures, indicating limited independent predictive value once stronger predictors are accounted for.
+
+### Model evaluation
+
+Performance on the test set at the optimal threshold is summarised in @tbl-rf-results.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Prediction
+pred_rf_opt <- factor(ifelse(prob_rf >= best_thresh, "yes", "no"),
+                      levels = c("no", "yes"))
+
+# Confusion matrix and ROC
+cm_rf <- confusionMatrix(pred_rf_opt, test_data$y, positive = "yes")
+
+# F1 score
+precision_rf <- cm_rf$byClass["Pos Pred Value"]
+recall_rf    <- cm_rf$byClass["Sensitivity"]
+f1_rf        <- 2 * precision_rf * recall_rf / (precision_rf + recall_rf)
+
+rf_results <- data.frame(
+  Metric = c("Accuracy", "Balanced Accuracy", "Sensitivity",
+             "Specificity", "Precision", "F1 Score", "AUC"),
+  Value = c(
+    round(cm_rf$overall["Accuracy"], 4),
+    round(cm_rf$byClass["Balanced Accuracy"], 4),
+    round(cm_rf$byClass["Sensitivity"], 4),
+    round(cm_rf$byClass["Specificity"], 4),
+    round(precision_rf, 4),
+    round(f1_rf, 4),
+    round(auc(roc_rf), 4)
+  )
+)
+```
+
+The Random Forest outperforms the single decision tree across all key metrics. The model achieved an accuracy of 0.841 and a balanced accuracy of 0.751 on the test set. Its sensitivity was 0.636 and its specificity was 0.867, showing that it performed better than the decision tree overall and was also more effective at identifying clients who subscribed.
+
+The precision was 0.381 and the F1 score was 0.476, which suggests a better balance between precision and recall than the decision tree. The AUC was 0.789, indicating good overall discrimination between the two classes.
+
+Overall, the random forest gave strong predictive performance. It was still better at classifying the majority "no" class, but it showed a clearer improvement in identifying the minority yes class and performed well across the main evaluation measures.
+
+## k-Nearest Neighbours (KNN)
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Shared preprocessing for KNN and SVM
+# These two methods require numerical inputs, so factor variables are converted
+# into dummy variables and then standardised using training-set statistics only.
+
+x_train_raw <- subset(train_data, select = -y)
+x_test_raw  <- subset(test_data,  select = -y)
+
+# create dummy variables from factor predictors
+dummy_obj <- dummyVars(~ ., data = x_train_raw)
+
+x_train_mat <- predict(dummy_obj, newdata = x_train_raw)
+x_test_mat  <- predict(dummy_obj, newdata = x_test_raw)
+
+# standardise using training set mean and sd
+preproc_obj <- preProcess(x_train_mat, method = c("center", "scale"))
+
+x_train_scaled <- predict(preproc_obj, x_train_mat)
+x_test_scaled  <- predict(preproc_obj, x_test_mat)
+
+# outcome variables
+y_train <- train_data$y
+y_test  <- test_data$y
+
+```
+
+### Model description and justification
+
+The k-Nearest Neighbours (KNN) classifier is a non-parametric method that assigns class labels based on the majority class among the k closest observations in the predictor space. As KNN relies on distance calculations, all predictors were converted into numerical form through dummy encoding and subsequently standardised to ensure comparability across variables.
+
+KNN was included in this study as a flexible, data-driven benchmark that does not impose a parametric structure on the relationship between predictors and the response. This makes it particularly useful for capturing local patterns in the data and for comparison with more structured classification methods.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Cross-Validated ROC for KNN Across Candidate k Values"
+#| label: fig-knn-tune
+#| fig-align: center
+#| fig-width: 6
+#| fig-height: 4
+
+set.seed(1234)
+
+# caret's twoClassSummary assumes the first level is the event of interest,
+# so reorder levels to make "yes" the positive class during tuning
+y_train_knn <- factor(y_train, levels = c("yes", "no"))
+
+ctrl_knn <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+knn_grid <- expand.grid(k = c(3, 5, 7, 9, 11, 15, 21))
+
+knn_fit <- train(
+  x = x_train_scaled,
+  y = y_train_knn,
+  method = "knn",
+  metric = "ROC",
+  tuneGrid = knn_grid,
+  trControl = ctrl_knn
+)
+
+ggplot(knn_fit$results, aes(x = k, y = ROC)) +
+  geom_line() +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(x = "Number of Neighbours (k)",
+       y = "Cross-Validated ROC",
+       title = "KNN Tuning")
+```
+
+### Hyperparameter tuning
+
+The primary tuning parameter for KNN is the number of neighbours, k. To determine an appropriate value, a range of candidate values was evaluated using cross-validated ROC as the selection criterion. This approach ensures that the chosen model maximises its ability to discriminate between subscribed and non-subscribed clients.
+
+The results indicate that model performance and stability improve as k increases. The highest cross-validated ROC was achieved at k = 21, which was therefore selected as the optimal hyperparameter. Although performance differences beyond k = 9 were relatively small, selecting k = 21 ensures that the model achieves its best observed predictive performance.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| label: tbl-knn-best
+#| tbl-cap: "KNN: Selected Hyperparameter"
+
+knn_best <- data.frame(
+  Hyperparameter = "Best k",
+  Value = knn_fit$bestTune$k
+)
+
+knn_best%>%
+  gt()
+```
+
+### Model Evaluation
+
+The selected KNN model was evaluated on the test set using Accuracy, Sensitivity, Specificity, Balanced Accuracy, and the Area Under the ROC Curve (AUC). While the model achieved a high overall accuracy, this result is influenced by the strong class imbalance in the dataset.
+
+More informative metrics, such as Sensitivity and AUC, indicate that the model has limited ability to correctly identify subscribed clients, which constitute the minority class. This suggests that, although KNN performs reasonably well in overall classification, its effectiveness in identifying the key target group is restricted.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+# Predictions on test set
+pred_knn <- predict(knn_fit, x_test_scaled)
+prob_knn <- predict(knn_fit, x_test_scaled, type = "prob")[, "yes"]
+
+pred_knn <- factor(pred_knn, levels = c("no", "yes"))
+
+cm_knn  <- confusionMatrix(pred_knn, y_test, positive = "yes")
+roc_knn <- roc(y_test, prob_knn, levels = c("no", "yes"), quiet = TRUE)
+
+# F1 score
+precision_knn <- cm_knn$byClass["Pos Pred Value"]
+recall_knn    <- cm_knn$byClass["Sensitivity"]
+f1_knn        <- 2 * precision_knn * recall_knn / (precision_knn + recall_knn)
+
+knn_results <- data.frame(
+  Metric = c("AUC", "Sensitivity", "Specificity",
+             "Balanced Accuracy", "F1 Score"),
+  Value = c(
+    round(auc(roc_knn), 4),
+    round(cm_knn$byClass["Sensitivity"], 4),
+    round(cm_knn$byClass["Specificity"], 4),
+    round(cm_knn$byClass["Balanced Accuracy"], 4),
+    round(f1_knn, 4)
+  )
+)
+
+```
+
+## Support Vector Machines (SVM)
+
+### Model description and justification
+
+Support Vector Machines (SVM) classify observations by identifying an optimal separating boundary that maximises the margin between classes. In this study, a radial basis function (RBF) kernel was employed to allow for nonlinear decision boundaries, enabling the model to capture complex relationships between predictors and the response variable.
+
+SVM was selected due to its strong performance in high-dimensional settings and its ability to construct stable classification boundaries after dummy encoding of categorical variables. Compared with KNN, SVM provides a more structured approach to classification and can offer improved generalisation in the presence of noisy predictors.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+set.seed(1234)
+
+y_train_svm <- factor(y_train, levels = c("yes", "no"))
+
+ctrl_svm <- trainControl(
+  method = "cv",
+  number = 3,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
+svm_grid <- expand.grid(
+  sigma = c(0.01, 0.05),
+  C     = c(0.5, 1, 2)
+)
+
+svm_fit <- train(
+  x = x_train_scaled,
+  y = y_train_svm,
+  method = "svmRadial",
+  metric = "ROC",
+  tuneGrid = svm_grid,
+  trControl = ctrl_svm
+)
+
+
+capture.output({
+  svm_fit$bestTune
+  svm_fit$results
+})
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| label: fig-SVM-turning
+#| fig-cap: "SVM Tuning"
+#| fig-align: center
+#| fig-width: 5
+#| fig-height: 3
+
+ggplot(svm_fit$results, aes(x = factor(C), y = factor(sigma), fill = ROC)) +
+  geom_tile(color = "white") +
+  theme_minimal() +
+  labs(x = "Cost (C)",
+       y = "Sigma",
+       fill = "ROC")
+```
+
+@fig-SVM-turning illustrates the cross-validated ROC values for different combinations of the SVM hyperparameters, namely the cost parameter (C) and the kernel parameter (sigma). Each cell represents the predictive performance of a specific parameter combination, with darker shading indicating higher ROC values.
+
+It can be observed that models with a larger sigma (0.05) consistently achieve higher ROC values compared to those with sigma = 0.01, suggesting that a more flexible decision boundary improves classification performance in this dataset. Among all combinations, the highest ROC is obtained at sigma = 0.05 and C = 0.5, indicating that this parameter setting provides the best trade-off between model complexity and generalisation ability.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| label: fig-SVM-turning-results
+#| fig-cap: "SVM Tuning Results"
+#| fig-align: center
+#| fig-width: 6
+#| fig-height: 4
+
+ggplot(svm_fit$results, aes(x = factor(C), y = ROC, colour = factor(sigma), group = factor(sigma))) +
+  geom_line() +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(
+    x = "Cost (C)",
+    y = "Cross-Validated ROC",
+    colour = "Sigma"
+  )
+```
+
+@fig-SVM-turning-results presents the variation in cross-validated ROC across different values of the cost parameter (C) for two levels of sigma. Each line corresponds to a fixed sigma value, allowing a direct comparison of how model performance changes with C under different levels of model flexibility.
+
+For both sigma values, the ROC slightly decreases as C increases, indicating that overly large cost values may lead to overfitting and reduced generalisation performance. Furthermore, the model with sigma = 0.05 consistently outperforms that with sigma = 0.01 across all values of C. The highest ROC is achieved at sigma = 0.05 and C = 0.5, confirming the result observed in the heatmap and supporting the selection of this parameter combination as the optimal SVM model.
+
+### Hyperparameter tuning
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| label: tbl-svm-best
+#| tbl-cap: "SVM: Selected Hyperparameters"
+
+svm_best <- data.frame(
+  Hyperparameter = c("Best sigma", "Best cost (C)"),
+  Value = c(svm_fit$bestTune$sigma, svm_fit$bestTune$C)
+)
+
+svm_best %>%
+  gt()
+```
+
+The performance of the tuned SVM model was assessed on the test set using the same evaluation metrics as for KNN. The model achieved high overall accuracy, but, similar to KNN, this result is largely driven by the dominance of the majority class.
+
+The relatively low sensitivity indicates that the SVM model struggles to correctly identify subscribed clients, suggesting that the decision boundary may favour the majority class. The AUC value provides a more balanced assessment of performance and indicates that the SVM model achieves moderate discrimination ability, though slightly lower than that of KNN in this application.
+
+### Model Evaluation
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+pred_svm <- predict(svm_fit, x_test_scaled)
+prob_svm <- predict(svm_fit, x_test_scaled, type = "prob")[, "yes"]
+
+pred_svm <- factor(pred_svm, levels = c("no", "yes"))
+
+cm_svm  <- confusionMatrix(pred_svm, y_test, positive = "yes")
+roc_svm <- roc(y_test, prob_svm, levels = c("no", "yes"), quiet = TRUE)
+
+# F1 score
+precision_svm <- cm_svm$byClass["Pos Pred Value"]
+recall_svm    <- cm_svm$byClass["Sensitivity"]
+f1_svm        <- 2 * precision_svm * recall_svm / (precision_svm + recall_svm)
+
+svm_results <- data.frame(
+  Metric = c("AUC", "Sensitivity", "Specificity",
+             "Balanced Accuracy", "F1 Score"),
+  Value = c(
+    round(auc(roc_svm), 4),
+    round(cm_svm$byClass["Sensitivity"], 4),
+    round(cm_svm$byClass["Specificity"], 4),
+    round(cm_svm$byClass["Balanced Accuracy"], 4),
+    round(f1_svm, 4)
+  )
+)
+
+```
+
+# Model Comparision and Selection {#sec-comp}
+
+# Conclusions {#sec-con}
