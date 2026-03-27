@@ -45,17 +45,13 @@ for(pkg in packages){
 
 # Introduction {#sec-intro}
 
-The aim of this project is to predict whether a client will subscribe to a term deposit using the bank marketing dataset provided for Project 2. The data were collected from direct marketing campaigns carried out by a Portuguese banking institution, where clients were contacted by telephone and, in some cases, contacted more than once before the final outcome was recorded. The full dataset includes information on 41,118 clients from 17 campaigns conducted between May 2008 and November 2010. For this analysis, 10,000 records were used. The response variable is binary and indicates whether the client subscribed to a term deposit (“yes” or “no”).
+The goal of this project is to predict whether clients will subscribe to a term deposit by analyzing the marketing data of the bank. The research findings of this report can assist financial institutions in formulating more effective marketing strategies, thereby increasing clients conversion rates and reducing marketing costs.
 
-This report begins with exploratory data analysis to understand the main features of the dataset and to guide the preprocessing stage. It then compares a range of classification models in order to determine which method performs best for predicting term deposit subscription in this dataset.
+The data used in this study was sourced from a Portuguese bank and covered the detailed information of 17 marketing campaigns conducted by the bank from May 2008 to November 2010. This included the relevant data of 41,118 clients. The dataset included the basic characteristics of the clients, macroeconomic indicators, and variables related to the marketing campaigns. The response variable was a binary variable indicating whether the clients would subscribe to a term deposit ("Yes" or "No"). To enhance the efficiency of the analysis, 10,000 records were randomly selected from the original data as samples for modeling and analysis.
 
-# Method {#sec-me}
+To achieve the research objectives, this study will employ various classification methods, such as KNN, LDA, Tree-based methods, SVM, etc., to model the data and compare the models. These methods are applicable to binary classification problems and can also utilize multiple evaluation metrics to compare the predictive capabilities of the models. Moreover, through the comparison among different models, it is beneficial to better comprehensively understand the relationship between the data features and the prediction results. 
 
-The analysis starts with exploratory data analysis and preprocessing, with the aim of understanding the variable structure, checking data quality, and preparing suitable predictors for modelling. Based on this, several classification methods are fitted and compared.
-
-The models considered include logistic regression, which is widely used for binary classification (Hosmer et al., 2013), and linear discriminant analysis (Fisher, 1936). K-nearest neighbours is included as an instance-based learning method. Tree-based approaches are represented by decision trees and random forests (Breiman, 2001), while support vector machines are used as a margin-based classification method (Cortes and Vapnik, 1995).
-
-Model performance is assessed using appropriate classification metrics, and the final model is selected based on its predictive performance on the test set.
+The research results will be compared and analyzed using appropriate evaluation metrics, thereby identifying the model with the best performance and further explaining its predictive capabilities. Ultimately, this will provide a reference basis for future practical applications.
 
 # Exploratory Analysis {#sec-EA}
 
@@ -71,9 +67,9 @@ bank <- read.csv("group_17.csv", header=TRUE)
 
 summary(bank)
 
-#1. Target people for subscription: Primarily young and middle-aged individuals (with an average age of 40), the majority of whom are new  clients (never having been contacted before).
-#2. Call situation: There is an obvious variation in call duration (ranging from 1 to 82 minutes), indicating that there are differences in client responses;also, some clients have been contacted excessively (up to 37 times).
-#3. External economic background: The interest rate fluctuations in this data are relatively obvious (ranging from 0.6% to 5.0%), and sometimes changes in the external economic environment may affect clients' willingness to deposit.
+#1. Target people for subscription: Primarily young and middle-aged individuals (with an average age of 40), the majority of whom are new  clients (never having been contacted before, most of pdays are 999).
+#2. Call situation: There is an obvious variation in call duration (ranging from 1 to 82 (4918/60)minutes), indicating that there are differences in client responses;also, some clients have been contacted excessively (up to 37 times in the campaign).
+#3. External economic background: The interest rate fluctuations in this data are relatively obvious (ranging of euribor3m from 0.6% to 5.0%), and sometimes changes in the external economic environment may affect clients' willingness to deposit.
 
 skim(bank)
 
@@ -87,16 +83,15 @@ skim(bank)
 
 ```
 
-`Duration` is unknown before making the call, and it is highly correlated with our target variable (we can know whether the client subscribes after the call, and clients with longer call durations are more likely to subscribe). If it is included in our model, it is equivalent to using "future information", which would lead to logically unreasonable predictions and make the constructed model of no practical value.Therefore, the analysis removes the `duration` variable to make the model more practical.
+Before making a call, the variable `duration` is usually unknown, and this variable is highly correlated with the target variable. Specifically, it can only be determined whether the client subscribes after the call ends, and longer call duration is usually more likely to result in a subscription. Therefore, adding this variable to the model is equivalent to introducing "future information", which is logically unreasonable and the model has no practical value. Based on these considerations, the `duration` variable will be deleted to ensure that the model remains feasible in practical scenarios.
 
-On the other hand,the dataset is highly imbalanced, with approximately 89% of observations belonging to the "no" class and around 11% to the "yes" class. A random seed (1234) was set, and the dataset was divided into training and test sets using an 80:20 ratio. After that, the class distribution remains consistent. In the training set, 88.84% of observations are "no" and 11.16% are "yes". Similarly, in the test set, 88.6% are "no" and 11.4% are "yes". It indicates that the random split has preserved the original class distribution and ensures that both the training and test sets are representative of the overall dataset. This is particularly important in the presence of class imbalance, as it helps avoid biased model evaluation and improves the reliability of performance comparisons across different models.
+On the other hand,the dataset is highly imbalanced, with approximately 89% of observations belonging to the "no" class and around 11% to the "yes" class. A random seed (1234) was set, and the dataset was divided into training and test sets using an 80:20 ratio. The class distribution remains consistent after the split, with 88.84% “no” and 11.16% “yes” in the training set, and 88.6% “no” and 11.4% “yes” in the test set. It indicates that the random split has preserved the original class distribution and ensures that both the training and test sets are representative of the overall dataset. This is particularly important in the presence of class imbalance, as it helps avoid biased model evaluation and improves the reliability of performance comparisons across different models.
 
 ```{r}
 #| echo: false
 #| warning: false
 #| message: false
 #| include: false
-
 #Data preprocessing
 
 bank$duration <- NULL #Removing the "duration" variable is to make the model practical: this variable is unknown before making the call, and it is highly correlated with our target variable (we can know whether the client subscribes after the call, and clients with longer call durations are more likely to subscribe). If it is included in our model, it is equivalent to using "future information", which would lead to logically unreasonable predictions and make the constructed model of no practical value.
@@ -122,6 +117,7 @@ bank$pdays_contact <- as.factor(bank$pdays_contact)
 bank$y <- as.factor(bank$y)
 
 ```
+
 
 ```{r}
 #| echo: false
@@ -150,6 +146,7 @@ prop.table(table(test_data$y))
 
 ```
 
+
 ```{r}
 #| echo: false
 #| warning: false
@@ -162,14 +159,14 @@ prop.table(table(test_data$y))
 
 #table(bank$y)
 
-prop <- prop.table(table(train_data$y))
+prop <- prop.table(table(train_data$y)) # to calculate the proportion
 
 bp <- barplot(table(train_data$y), ylim=c(0,8000))
 text(bp, table(train_data$y), paste0(round(prop*100, 1), "%"), pos = 3)#to add the proportion to the bar chart for better show in the report 
 
 ```
 
-@fig-scat1 This chart illustrates the uneven distribution of the target variable y: the proportion of non-subscribed clients reaches 88.8%, while the proportion of successfully converted clients is only 11.2%. Due to this distribution characteristic, our subsequent logistic regression model may exhibit certain bias during the fitting process. Therefore, when evaluating the model's performance, we do not solely rely on the overall accuracy rate (because even if the model predicts all results as "no", the final accuracy rate can still exceed 80%). On the other hand, we will pay more attention to the model's ability to identify these 11.21% key samples, so that the final prediction results have practical reference value.
+@fig-scat1 illustrates the uneven distribution of the target variable y: the proportion of non-subscribed clients reaches 88.8%, while the proportion of successfully converted clients is only 11.2%. Such class imbalance may introduce bias during model training. Therefore, model performance should not be evaluated solely based on overall accuracy, since even if a model predicts all results as "no", the overall accuracy can still exceed 80%. On the other hand, more attention will be paid to the model's ability to identify these 11.2% key samples, so that the final prediction results have practical reference value.
 
 ```{r}
 #| echo: false
@@ -187,8 +184,11 @@ bank_num <- train_data[,c("age",
                     "euribor3m",
                     "nr.employed")]
 
+#head(bank_num)
+
 
 ```
+
 
 ```{r}
 #| echo: false
@@ -208,6 +208,7 @@ corrplot(cor(bank_num),
          number.cex = 0.7)
 
 ```
+
 
 ```{r}
 #| echo: false
@@ -243,10 +244,9 @@ pca_loadings %>%
     columns = c(Comp.1, Comp.2),
     decimals = 2 # to keep two decimal places
   ) 
-
 ```
 
-By combining the correlation matrix @fig-scat2 and Principal Component Analysis @tbl-pca, it can be observed that `euribor3m`, `nr.employed`, and `emp.var.rate` have a high degree of positive correlation (the pairwise correlation coefficients are all greater than 0.9), and multicollinearity can also be seen in the first principal component (Comp.1). For the subsequent modeling performance, we decided to exclude `nr.employed` and `emp.var.rate` and retain `euribor3m`. Because `euribor3m` represents the Euro Interbank Offered Rate, it can better reflect the macro-financial situation during bank marketing, and can relatively better help us explain the final subscription situation of clients. Meanwhile, since the variable `default` only has two values, "no" and "unknown", and over 79% of the cases are "no" with no "yes", the available information is extremely limited. Therefore, this variable is removed for reducing noise in the future model.
+By combining the correlation matrix @fig-scat2 and Principal Component Analysis @tbl-pca, it can be observed that `euribor3m`, `nr.employed`, and `emp.var.rate` are highly positively correlated (with pairwise correlation coefficients all above 0.9). Multicollinearity is also reflected in the first principal component (Comp.1). To improve subsequent modeling performance, `nr.employed` and `emp.var.rate` are excluded, while `euribor3m` is retained. As the Euro Interbank Offered Rate, `euribor3m` better captures the macro-financial environment during bank marketing and provides stronger interpretability for the final subscription outcomes. Meanwhile, since the variable `default` only has two values, "no" and "unknown", and over 79% of the cases are "no" with no instances of "yes", the available information is extremely limited. Therefore, this variable is removed to reduce noise in the future model.
 
 ```{r}
 #| echo: false
@@ -259,6 +259,9 @@ train_data$nr.employed <- NULL
 train_data$emp.var.rate <- NULL
 test_data$nr.employed <- NULL
 test_data$emp.var.rate <- NULL
+
+#names(train_data)
+#names(test_data)
 ```
 
 ```{r}
@@ -267,15 +270,15 @@ test_data$emp.var.rate <- NULL
 #| message: false
 #| include: false
 
-# to have a look at category variable
-# x and y are all category variable ,so i use proportion to better show the relationship between them,to see who is more likely to subscribe( set  position = "fill" to show the proportion barplot)
+# to have a look at categorical variables
+# x and y are all categorical variables, so i use proportion to better show the relationship between them, to see who is more likely to subscribe( set  position = "fill" to show the stacked percentage bar chart)
 
 ggplot(train_data, aes(job, fill = y)) + geom_bar(position = "fill")
 # can see clear difference
 
 ggplot(train_data, aes(marital, fill = y)) + geom_bar(position = "fill")
 # table(train_data$marital)
-# difference is not very clear.Just 13 records are "unknown".So it's possible most of this type is "no".
+# difference is not very clear. Just 13 records are "unknown". So it's possible most of this type is "no".
 
 ggplot(train_data, aes(education, fill = y)) + geom_bar(position = "fill")
 # can see clear difference
@@ -286,7 +289,7 @@ ggplot(train_data, aes(default, fill = y)) + geom_bar(position = "fill")
 
 table(train_data$default)
 
-# Since the variable default only has two values, "no" and "unknown", and over 79% of the cases are "no" with no "yes", the available information is extremely limited. Therefore, we have decided to remove this variable.
+# Since the variable default only has two values, "no" and "unknown", and over 79% of the cases are "no" with no instances of "yes", the available information is extremely limited. Therefore, we have decided to remove this variable.
 
 train_data$default <- NULL
 test_data$default <- NULL
@@ -357,16 +360,30 @@ grid.arrange(p1, p2, p3, p4, ncol = 2)
 
 ```
 
-@fig-scat3 This set of graphs respectively shows the relationships between several key categorical variables and the variable indicating whether the client subscribes (y). From the graphs, it can be seen that the previous marketing outcome (`poutcome`) obviously affects whether the client subscribes this time. Clients who were successfully marketed before (success) have a higher probability of subscribing than those who were marketing failed (failure) or had no previous contact (nonexistent). Moreover, there are certain differences between different occupations (`job`) and educational levels (`education`), indicating that the social characteristics of the clients may have an impact on the subscription decision. At the same time, there are also certain differences in contact methods (`contact`), with clients contacted via mobile phone (cellular) having a slightly higher chance of subscribing than those contacted via telephone (telephone).
+@fig-scat3 shows the relationships between several key categorical variables and the variable indicating whether the client subscribes (y). Due to the large number of categorical variables, only selected variables with stronger interpretability and potential relevance to the target variable are presented. From the graphs, it can be seen that the previous marketing outcome (`poutcome`) obviously affects whether the client subscribes this time. Clients who were successfully marketed before (success) have a higher probability of subscribing than those who were marketing failed (failure) or had no previous contact (nonexistent). Moreover, there are certain differences between different occupations (`job`) and educational levels (`education`), indicating that the social characteristics of the clients may have an impact on the subscription decision. At the same time, there are also certain differences in contact methods (`contact`), with clients contacted via mobile phone (cellular) having a slightly higher chance of subscribing than those contacted via telephone. 
 
-Overall, historical marketing results, client social characteristics, and communication channels may all have an impact on whether the client subscribes this time. Therefore, these variables will have certain predictive value in the subsequent modeling process.
-
-@tbl-var presents the variables that we ultimately used for the analysis.
+Overall, historical campaign outcomes, client social characteristics, and communication channels may all have an impact on whether the client subscribes this time. Therefore, these variables will have certain predictive value in the subsequent modeling process.
 
 ```{r}
 #| echo: false
+#| warning: false
+#| message: false
+#| include: false
+
+# to see the selected variables
+names(train_data)
+names(test_data)
+```
+
+```{r}
+#| include: false
+#| echo: false
 #| label: tbl-var
 #| tbl-cap: Variables Used in the Analysis
+
+# This table presents the variables that we ultimately used for the analysis.
+
+# use the information in Table 2: Variable description of bank marketing dataset to create a dataframe for better showing in the report .But it's too much. So we decided to not show it in the report, instead we use "Feature Selection Summary" to explain this part.
 
 var_table <- data.frame(
   Variable = c(
@@ -376,6 +393,7 @@ var_table <- data.frame(
     "campaign","pdays_contact","previous","poutcome",
     "cons.price.idx","cons.conf.idx","euribor3m"
   ),
+  
   Type = c(
     "Categorical",
     "Numeric","Categorical","Categorical","Categorical","Categorical","Categorical",
@@ -383,45 +401,48 @@ var_table <- data.frame(
     "Numeric","Categorical","Numeric","Categorical",
     "Numeric","Numeric","Numeric"
   ),
+  
   Description = c(
-    "Term deposit subscription (yes/no)",
-    "Client age",
-    "Job type",
-    "Marital status",
-    "Education level",
-    "Housing loan status",
-    "Personal loan status",
-    "Contact type",
-    "Last contact month",
-    "Last contact weekday",
-    "Number of contacts in current campaign",
-    "Whether previously contacted",
-    "Number of previous contacts",
-    "Previous campaign outcome",
-    "Consumer price index",
-    "Consumer confidence index",
-    "Euribor 3-month rate"
+    "Has the client subscribed a term deposit (yes/no)",
+    
+    "Age of the client at the contact date",
+    "Type of job (e.g., admin, technician, services, etc.)",
+    "Marital status (divorced, married, single)",
+    "Education level (basic.4y, basic.6y, basic.9y, high.school, university.degree, etc.)",
+    "Whether the client has a housing loan",
+    "Whether the client has a personal loan",
+    
+    "Contact communication type (cellular or telephone)",
+    "Last contact month of the year",
+    "Last contact day of the week",
+    
+    "Number of contacts performed during this campaign for this client",
+    "Indicator whether the client has been contacted previously",
+    "Number of contacts performed before this campaign",
+    "Outcome of the previous marketing campaign (failure, nonexistent, success)",
+    
+    "Consumer price index (monthly indicator)",
+    "Consumer confidence index (monthly indicator)",
+    "Euribor 3-month rate (daily indicator)"
   )
 )
 
+# use gt() to better show the selected variable
 var_table %>%
   gt() %>%
+  tab_header(
+    title = "Variables Used in the Analysis",
+    subtitle = "Selected variables from the Bank Marketing dataset"
+  )  %>% # add title and subtitle
   cols_label(
-    Variable = "Variable",
-    Type = "Type",
+    Variable = "Variable Name",
+    Type = "Variable Type",
     Description = "Description"
-  ) %>%
-  cols_width(
-    Variable ~ px(90),
-    Type ~ px(90),
-    Description ~ px(300)
-  ) %>%
-  tab_options(
-    table.font.size = px(10),
-    column_labels.font.size = px(10),
-    data_row.padding = px(2)
-  )
+  ) #change the column label
 ```
+### Feature Selection Summary {#sec-FSS .unnumbered}
+
+The final set of variables includes clients characteristics (e.g., `age`, `job`, `education`), campaign-related variables (e.g., `campaign`, `previous`, `poutcome`), and macroeconomic indicators (e.g., `euribor3m`, consumer indices). Variables with no practical value or low information content, such as duration and default, will be excluded. Additionally, multiple collinearity issues are addressed by retaining representative variables. Overall, the selected features lay a solid foundation for the subsequent modeling work.
 
 # Formal Analysis {#sec-FA}
 
