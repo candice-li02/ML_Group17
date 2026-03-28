@@ -30,11 +30,11 @@ include-in-header:
 
 The goal of this project is to predict whether clients will subscribe to a term deposit by analyzing the marketing data of the bank. The research findings of this report can assist financial institutions in formulating more effective marketing strategies, thereby increasing clients conversion rates and reducing marketing costs.
 
-The data used in this study was sourced from a Portuguese bank and covered the detailed information of 17 marketing campaigns conducted by the bank from May 2008 to November 2010. This included the relevant data of 41,118 clients. The dataset included the basic characteristics of the clients, macroeconomic indicators, and variables related to the marketing campaigns. The response variable was a binary variable indicating whether the clients would subscribe to a term deposit ("Yes" or "No"). To enhance the efficiency of the analysis, 10,000 records were randomly selected from the original data as samples for modeling and analysis.
+The data used in this study was sourced from a Portuguese bank and covered the detailed information of 17 marketing campaigns conducted by the bank from May 2008 to November 2010. This included the relevant data of 41,118 clients. The dataset included the basic characteristics of the clients, macroeconomic indicators, and variables related to the marketing campaigns. The response variable was a binary variable indicating whether the clients would subscribe to a term deposit ("yes" or "no"). To enhance the efficiency of the analysis, 10,000 records were randomly selected from the original data as samples for modeling and analysis.
 
 # Method {#sec-me}
 
-To achieve the research objectives, this study will employ various classification methods, such as KNN, LDA, Tree-based methods, SVM, etc., to model the data and compare the models. These methods are applicable to binary classification problems and can also utilize multiple evaluation metrics to compare the predictive capabilities of the models. Moreover, through the comparison among different models, it is beneficial to better comprehensively understand the relationship between the data features and the prediction results.
+To achieve the research objectives, this study will employ various classification methods, such as KNN, LDA, Tree-based methods, SVM, etc., to model the data and compare the models. These methods are applicable to binary classification problems and can also utilize multiple evaluation metrics to compare the predictive capabilities of the models. Moreover, through the comparison among different models, it is beneficial to better comprehensively understand the relationship between the data features and the target variable.
 
 The research results will be compared and analyzed using appropriate evaluation metrics, thereby identifying the model with the best performance and further explaining its predictive capabilities. Ultimately, this will provide a reference basis for future practical applications.
 
@@ -65,7 +65,6 @@ for(pkg in packages){
   library(pkg, character.only = TRUE)
 }
 ```
-
 
 # Exploratory Analysis {#sec-EA}
 
@@ -99,7 +98,7 @@ skim(bank)
 
 Before making a call, the variable `duration` is usually unknown, and this variable is highly correlated with the target variable. Specifically, it can only be determined whether the client subscribes after the call ends, and longer call duration is usually more likely to result in a subscription. Therefore, adding this variable to the model is equivalent to introducing "future information", which is logically unreasonable and the model has no practical value. Based on these considerations, the `duration` variable will be deleted to ensure that the model remains feasible in practical scenarios.
 
-On the other hand,the dataset is highly imbalanced, with approximately 89% of observations belonging to the "no" class and around 11% to the "yes" class. A random seed (1234) was set, and the dataset was divided into training and test sets using an 80:20 ratio. The class distribution remains consistent after the split, with 88.84% “no” and 11.16% “yes” in the training set, and 88.6% “no” and 11.4% “yes” in the test set. It indicates that the random split has preserved the original class distribution and ensures that both the training and test sets are representative of the overall dataset. This is particularly important in the presence of class imbalance, as it helps avoid biased model evaluation and improves the reliability of performance comparisons across different models.
+On the other hand,the dataset is highly imbalanced, with approximately 89% of observations belonging to the "no" class and around 11% to the "yes" class. A random seed (1234) was set, and the dataset was divided into training and test sets using an 80:20 ratio. The class distribution remains consistent after the split, with 88.84% “no” and 11.16% “yes” in the training set, and 88.6% “no” and 11.4% “yes” in the test set. It indicates that the random split has preserved the original class distribution and ensures that both the training and test sets are representative of the overall dataset. This is particularly important in the presence of class imbalance, as it helps avoid biased model evaluation and improves the reliability of performance comparisons across different models. Furthermore, `pdays` was re-encoded as a binary feature to distinguish between clients with and without prior contact history, addressing the skewed distribution caused by the '999' placeholder.
 
 ```{r}
 #| echo: false
@@ -226,7 +225,7 @@ corrplot(cor(bank_num),
 #| message: false
 #| include: false
 
-# The three variables (emp.var.rate, euribor3m, nr.employed) are highly correlated, so we use pca to decide to delete which two variables
+# The three variables (emp.var.rate, euribor3m, nr.employed) are highly correlated, so we use pca to help to delete which two variables
 
 bank.pca <- princomp(bank_num, cor = TRUE)
 
@@ -370,7 +369,7 @@ grid.arrange(p1, p2, p3, p4, ncol = 2)
 
 ```
 
-@fig-scat3 shows the relationships between several key categorical variables and the variable indicating whether the client subscribes (y). Due to the large number of categorical variables, only selected variables with stronger interpretability and potential relevance to the target variable are presented. From the graphs, it can be seen that the previous marketing outcome (`poutcome`) obviously affects whether the client subscribes this time. Clients who were successfully marketed before (success) have a higher probability of subscribing than those who were marketing failed (failure) or had no previous contact (nonexistent). Moreover, there are certain differences between different occupations (`job`) and educational levels (`education`), indicating that the social characteristics of the clients may have an impact on the subscription decision. At the same time, there are also certain differences in contact methods (`contact`), with clients contacted via mobile phone (cellular) having a slightly higher chance of subscribing than those contacted via telephone.
+@fig-scat3 shows the relationships between several key categorical variables and the variable indicating whether the client subscribes (y). Due to the large number of categorical variables, only the variables with stronger interpretability and potential relevance to the target variable are presented. From the graphs, it can be seen that the previous marketing outcome (`poutcome`) obviously affects whether the client subscribes this time. Clients who were successfully marketed before (success) have a higher probability of subscribing than those who were marketing failed (failure) or had no previous contact (nonexistent). Moreover, there are certain differences between different occupations (`job`) and educational levels (`education`), indicating that the social characteristics of the clients may have an impact on the subscription decision. At the same time, there are also certain differences in contact methods (`contact`), with clients contacted via mobile phone (cellular) having a slightly higher chance of subscribing than those contacted via telephone.
 
 Overall, historical campaign outcomes, client social characteristics, and communication channels may all have an impact on whether the client subscribes this time. Therefore, these variables will have certain predictive value in the subsequent modeling process.
 
@@ -453,7 +452,7 @@ var_table %>%
 
 ### Feature Selection Summary {#sec-FSS .unnumbered}
 
-The final set of variables includes clients characteristics (e.g., `age`, `job`, `education`), campaign-related variables (e.g., `campaign`, `previous`, `poutcome`), and macroeconomic indicators (e.g., `euribor3m`, consumer indices). `duration` was excluded to avoid data leakage, as it is only observable after a call has ended. `default` was removed due to near-zero variance, with no instances of "yes" observed in the training data. Additionally, multiple collinearity issues are addressed by retaining representative variables. Overall, the selected features lay a solid foundation for the subsequent modeling work.
+The final set of variables includes clients characteristics (e.g., `age`, `job`, `education`), campaign-related variables (e.g., `campaign`, `previous`, `poutcome`), and macroeconomic indicators (e.g., `euribor3m`, consumer indices). Variable `duration` was excluded to avoid data leakage, as it is only observable after a call has ended. Variable `default` was removed due to a lack of informative variance, as the training data only contained 'no' and 'unknown' values, with no instances of 'yes' observed to provide predictive power. Additionally, multiple collinearity issues are addressed by retaining representative variables. Overall, the selected features lay a solid foundation for the subsequent modeling work.
 
 # Formal Analysis {#sec-FA}
 
